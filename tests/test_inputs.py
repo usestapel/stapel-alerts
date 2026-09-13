@@ -308,13 +308,19 @@ def test_a_park_on_a_core_without_the_signal_is_caught_by_the_log_handler(monkey
     assert "ValueError: handler blew up" in event.trace
 
 
-def test_a_park_is_one_issue_not_two_when_the_structured_input_is_connected():
-    """Core logs the park AND announces it. Two inputs, one bug: the log line
-    must not open a second issue with a different fingerprint."""
+def test_a_park_is_one_issue_whichever_input_caught_it():
+    """One park, one issue — on every core this module supports.
+
+    From core 0.68.1 the park is BOTH announced and logged, and the log line
+    would open a second issue with a different fingerprint if the structured
+    input did not supersede it. Below 0.68.1 only the log line exists. The
+    invariant that must hold either way is the count; which input caught it
+    is what `superseded_loggers()` says, so the assertion reads that rather
+    than assuming a core version."""
     from stapel_alerts.inputs import superseded_loggers
     from stapel_core.bus.dlq import record_parked
 
-    assert "stapel_core.bus.dlq" in superseded_loggers()
+    structured = "stapel_core.bus.dlq" in superseded_loggers()
 
     try:
         raise ValueError("handler blew up")
@@ -322,7 +328,7 @@ def test_a_park_is_one_issue_not_two_when_the_structured_input_is_connected():
         record_parked("workspace.personal.created", _Event(), reason="handler")
 
     assert Issue.objects.count() == 1
-    assert ErrorEvent.objects.get().kind == "dlq"
+    assert ErrorEvent.objects.get().kind == ("dlq" if structured else "log")
 
 
 def test_dlq_capture_can_be_switched_off(settings):

@@ -1,0 +1,125 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # stapel-core comes from PyPI, by the range pyproject declares — the
+      # way an end user gets it (workspace convention, 2026-09-06). The
+      # git-main row below is advisory and does not gate.
+      - name: Install
+        run: pip install -e ".[all]" || pip install -e .
+
+      - name: Lint
+        run: |
+          pip install ruff --quiet
+          ruff check . --select E,F,W --ignore E501
+
+      - name: migration-lint (expand/contract gate, release-management.md §3)
+        run: |
+          pip install stapel-tools --quiet
+          stapel-migration-lint . --strict
+
+      - name: Import check (no Django needed)
+        run: python -c "import stapel_alerts; print('import OK')"
+
+      - name: Install test dependencies
+        run: pip install pytest pytest-django pytest-cov drf-spectacular stapel-tools
+
+      - name: Tests with coverage
+        run: |
+          pytest tests/ \
+            --cov=stapel_alerts \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --junitxml=junit.xml \
+            -o junit_family=legacy \
+            -v
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          files: coverage.xml
+          flags: stapel-alerts
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results to Codecov
+        uses: codecov/test-results-action@v1
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  core-main:
+    # Advisory (workspace convention, 2026-09-06): tells us early that core's
+    # main broke us, without holding a release hostage to an unreleased core.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install stapel-core from main
+        run: pip install git+https://github.com/usestapel/stapel-core.git
+      - name: Install
+        run: pip install -e ".[all]" || pip install -e .
+      - name: Install test dependencies
+        run: pip install pytest pytest-django drf-spectacular stapel-tools
+      - name: Tests
+        run: pytest tests/ -q
+
+  release-track:
+    # Installs the package the way an end user does: every dependency resolved
+    # from PyPI strictly by the declared pins. Catches "a pin into the void".
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install as an end user (deps resolved from PyPI by pin)
+        run: pip install .
+      - name: Verify stapel-core resolved from PyPI satisfies the declared pin
+        # Read out of pyproject.toml rather than hardcoded: a hardcoded tuple
+        # goes stale the moment the pin moves, and then the gate fails for a
+        # reason that is not the one it is named after.
+        run: |
+          cd "$RUNNER_TEMP" && python -c "
+          import importlib.metadata as m
+          import re
+          import tomllib
+          from pathlib import Path
+
+          pyproject = tomllib.loads(Path('$GITHUB_WORKSPACE/pyproject.toml').read_text())
+          dep = next(d for d in pyproject['project']['dependencies'] if d.startswith('stapel-core'))
+          floor_s, ceil_s = re.search(r'>=([\d.]+),<([\d.]+)', dep).groups()
+          floor = tuple(map(int, floor_s.split('.')))
+          ceil = tuple(map(int, ceil_s.split('.')))
+          v = m.version('stapel-core')
+          got = tuple(map(int, v.split('.')[:len(floor)]))
+          print(f'stapel-core {v} against {dep!r}')
+          assert floor <= got < ceil, f'{v} outside declared range {dep!r}'
+          "
+      - name: Import smoke (installed package, from a clean dir)
+        run: cd "$RUNNER_TEMP" && python -c "import stapel_alerts; print('release-track import OK')"

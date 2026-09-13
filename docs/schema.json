@@ -1,0 +1,818 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/alerts/api/v1/issues": {
+      "get": {
+        "operationId": "alerts_api_v1_issues_list",
+        "description": "``GET /alerts/api/v1/issues`` — the triage list, newest activity first.\n\n**Permissions:** `IsStaffUser`",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "type": "string"
+            },
+            "description": "debug|info|warning|error|fatal"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "open",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Only new + regressed"
+          },
+          {
+            "in": "query",
+            "name": "service",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "type": "string"
+            },
+            "description": "ISO-8601; last_seen >= since"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string"
+            },
+            "description": "new|fixed|regressed|muted"
+          }
+        ],
+        "tags": [
+          "alerts"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Issue"
+                  }
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/alerts/api/v1/issues/{issue_id}": {
+      "get": {
+        "operationId": "alerts_api_v1_issues_retrieve",
+        "description": "``GET`` one issue with its last events; ``PATCH`` its status/note.\n\n**Permissions:** `IsStaffUser`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "issue_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "alerts"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueDetail"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      },
+      "patch": {
+        "operationId": "alerts_api_v1_issues_partial_update",
+        "description": "``GET`` one issue with its last events; ``PATCH`` its status/note.\n\n**Permissions:** `IsStaffUser`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "issue_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "alerts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedIssuePatch"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedIssuePatch"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedIssuePatch"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Issue"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/alerts/api/v1/issues/{issue_id}/fix": {
+      "post": {
+        "operationId": "alerts_api_v1_issues_fix_create",
+        "description": "``POST /issues/{id}/fix`` — close an issue with the release that fixed it.\n\nThe endpoint CI calls on a commit that references ``alerts:<issue-id>``,\nand the one an agent calls after a fix wave. Idempotent: fixing a fixed\nissue overwrites the version, which is what a re-deploy of a better fix\nshould do.\n\n**Permissions:** `IsStaffUser`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "issue_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "alerts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueFix"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueFix"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueFix"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Issue"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/alerts/api/v1/report": {
+      "post": {
+        "operationId": "alerts_api_v1_report_create",
+        "description": "``POST /alerts/api/v1/report`` — a batch of events from a reporter.\n\n``AllowAny`` at the DRF layer and authenticated HERE, by service key,\nbecause a reporter has no session and no JWT: it is a process, not a\nperson. The key is looked up by hash (``Service.authenticate``), so the\nplaintext never reaches a query log.\n\nA staff session is also accepted, which is what makes the endpoint\ntestable and lets an operator replay an event by hand.\n\n**Permissions:** `AllowAny`",
+        "tags": [
+          "alerts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Report"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Report"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Report"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {}
+        ],
+        "responses": {
+          "202": {
+            "description": "No response body"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ErrorEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true
+          },
+          "issue": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "service": {
+            "type": "string",
+            "readOnly": true
+          },
+          "environment": {
+            "type": "string",
+            "readOnly": true
+          },
+          "release": {
+            "type": "string",
+            "readOnly": true
+          },
+          "level": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LevelEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/KindEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "message": {
+            "type": "string",
+            "readOnly": true
+          },
+          "trace": {
+            "type": "string",
+            "readOnly": true
+          },
+          "context": {
+            "readOnly": true
+          },
+          "request_path": {
+            "type": "string",
+            "readOnly": true
+          },
+          "trace_id": {
+            "type": "string",
+            "readOnly": true
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true,
+            "nullable": true
+          },
+          "occurrences": {
+            "type": "integer",
+            "readOnly": true
+          },
+          "sentry_event_id": {
+            "type": "string",
+            "readOnly": true
+          }
+        },
+        "required": [
+          "context",
+          "environment",
+          "id",
+          "issue",
+          "kind",
+          "level",
+          "message",
+          "occurred_at",
+          "occurrences",
+          "received_at",
+          "release",
+          "request_path",
+          "sentry_event_id",
+          "service",
+          "trace",
+          "trace_id",
+          "user_id"
+        ]
+      },
+      "Issue": {
+        "type": "object",
+        "description": "The tracker row. What an agent lists, reads and reconciles against.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true
+          },
+          "fingerprint": {
+            "type": "string",
+            "readOnly": true
+          },
+          "service": {
+            "type": "string",
+            "readOnly": true
+          },
+          "environment": {
+            "type": "string",
+            "readOnly": true
+          },
+          "level": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LevelEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/KindEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "title": {
+            "type": "string",
+            "readOnly": true
+          },
+          "culprit": {
+            "type": "string",
+            "readOnly": true
+          },
+          "exception_class": {
+            "type": "string",
+            "readOnly": true
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Status295Enum"
+              }
+            ],
+            "readOnly": true
+          },
+          "note": {
+            "type": "string",
+            "readOnly": true
+          },
+          "count": {
+            "type": "integer",
+            "readOnly": true
+          },
+          "count_since_fix": {
+            "type": "integer",
+            "readOnly": true
+          },
+          "first_seen": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "last_seen": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "fixed_in_version": {
+            "type": "string",
+            "readOnly": true
+          },
+          "fixed_in_sha": {
+            "type": "string",
+            "readOnly": true
+          },
+          "fixed_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true,
+            "nullable": true
+          },
+          "regressed_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true,
+            "nullable": true
+          },
+          "muted_until": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true,
+            "nullable": true
+          },
+          "sentry_event_id": {
+            "type": "string",
+            "readOnly": true
+          }
+        },
+        "required": [
+          "count",
+          "count_since_fix",
+          "culprit",
+          "environment",
+          "exception_class",
+          "fingerprint",
+          "first_seen",
+          "fixed_at",
+          "fixed_in_sha",
+          "fixed_in_version",
+          "id",
+          "kind",
+          "last_seen",
+          "level",
+          "muted_until",
+          "note",
+          "regressed_at",
+          "sentry_event_id",
+          "service",
+          "status",
+          "title"
+        ]
+      },
+      "IssueDetail": {
+        "type": "object",
+        "description": "The tracker row. What an agent lists, reads and reconciles against.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true
+          },
+          "fingerprint": {
+            "type": "string",
+            "readOnly": true
+          },
+          "service": {
+            "type": "string",
+            "readOnly": true
+          },
+          "environment": {
+            "type": "string",
+            "readOnly": true
+          },
+          "level": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LevelEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/KindEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "title": {
+            "type": "string",
+            "readOnly": true
+          },
+          "culprit": {
+            "type": "string",
+            "readOnly": true
+          },
+          "exception_class": {
+            "type": "string",
+            "readOnly": true
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Status295Enum"
+              }
+            ],
+            "readOnly": true
+          },
+          "note": {
+            "type": "string",
+            "readOnly": true
+          },
+          "count": {
+            "type": "integer",
+            "readOnly": true
+          },
+          "count_since_fix": {
+            "type": "integer",
+            "readOnly": true
+          },
+          "first_seen": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "last_seen": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "fixed_in_version": {
+            "type": "string",
+            "readOnly": true
+          },
+          "fixed_in_sha": {
+            "type": "string",
+            "readOnly": true
+          },
+          "fixed_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true,
+            "nullable": true
+          },
+          "regressed_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true,
+            "nullable": true
+          },
+          "muted_until": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true,
+            "nullable": true
+          },
+          "sentry_event_id": {
+            "type": "string",
+            "readOnly": true
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ErrorEvent"
+            },
+            "readOnly": true
+          }
+        },
+        "required": [
+          "count",
+          "count_since_fix",
+          "culprit",
+          "environment",
+          "events",
+          "exception_class",
+          "fingerprint",
+          "first_seen",
+          "fixed_at",
+          "fixed_in_sha",
+          "fixed_in_version",
+          "id",
+          "kind",
+          "last_seen",
+          "level",
+          "muted_until",
+          "note",
+          "regressed_at",
+          "sentry_event_id",
+          "service",
+          "status",
+          "title"
+        ]
+      },
+      "IssueFix": {
+        "type": "object",
+        "description": "``POST /issues/{id}/fix`` — the release that claims the fix.\n\nBoth fields are optional and both are recorded: a CI caller has a sha, a\nhuman closing an issue after a hotfix may only have a version, and an\nissue closed with neither is still closed — just less useful when it\nregresses and somebody asks which deploy was supposed to have fixed it.",
+        "properties": {
+          "version": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "sha": {
+            "type": "string",
+            "maxLength": 64
+          }
+        }
+      },
+      "IssuePatchStatusEnum": {
+        "enum": [
+          "new",
+          "fixed",
+          "muted"
+        ],
+        "type": "string",
+        "description": "* `new` - new\n* `fixed` - fixed\n* `muted` - muted"
+      },
+      "KindEnum": {
+        "enum": [
+          "exception",
+          "log",
+          "dlq",
+          "monitoring",
+          "manual"
+        ],
+        "type": "string",
+        "description": "* `exception` - Exception\n* `log` - Log\n* `dlq` - DLQ park\n* `monitoring` - Monitoring\n* `manual` - Manual"
+      },
+      "LevelEnum": {
+        "enum": [
+          "debug",
+          "info",
+          "warning",
+          "error",
+          "fatal"
+        ],
+        "type": "string",
+        "description": "* `debug` - Debug\n* `info` - Info\n* `warning` - Warning\n* `error` - Error\n* `fatal` - Fatal"
+      },
+      "PatchedIssuePatch": {
+        "type": "object",
+        "description": "``PATCH /issues/{id}`` — status and/or note.",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/IssuePatchStatusEnum"
+          },
+          "note": {
+            "type": "string"
+          },
+          "muted_until": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "Report": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportEvent"
+            }
+          }
+        },
+        "required": [
+          "events"
+        ]
+      },
+      "ReportEvent": {
+        "type": "object",
+        "description": "One event in a ``POST /report`` batch — the reporter wire shape.\n\n``kind=\"monitoring\"`` is the watchdog's entry: a report that the\nmonitoring stack itself has a blind spot (a scrape gap, an exporter down,\nan alertmanager silence). It carries no traceback, so ``message`` is what\ngroups it, and ``context`` carries the specifics\n(``{\"check\": \"...\", \"target\": \"...\", \"last_scrape\": \"...\"}``).",
+        "properties": {
+          "message": {
+            "type": "string",
+            "default": ""
+          },
+          "trace": {
+            "type": "string",
+            "default": ""
+          },
+          "service": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "level": {
+            "type": "string",
+            "default": "error",
+            "maxLength": 16
+          },
+          "kind": {
+            "type": "string",
+            "default": "manual",
+            "maxLength": 16
+          },
+          "environment": {
+            "type": "string",
+            "default": "production",
+            "maxLength": 32
+          },
+          "release": {
+            "type": "string",
+            "default": "",
+            "maxLength": 64
+          },
+          "context": {},
+          "request_path": {
+            "type": "string",
+            "default": "",
+            "maxLength": 512
+          },
+          "trace_id": {
+            "type": "string",
+            "default": "",
+            "maxLength": 64
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "occurrences": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "exc_class": {
+            "type": "string",
+            "default": "",
+            "maxLength": 128
+          }
+        }
+      },
+      "Status295Enum": {
+        "enum": [
+          "new",
+          "fixed",
+          "regressed",
+          "muted"
+        ],
+        "type": "string",
+        "description": "* `new` - New\n* `fixed` - Fixed\n* `regressed` - Regressed\n* `muted` - Muted"
+      }
+    },
+    "securitySchemes": {
+      "JWTCookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "stapel_jwt",
+        "description": "JWT token stored in cookie. Login via /auth/admin/ to get the cookie."
+      }
+    }
+  }
+}

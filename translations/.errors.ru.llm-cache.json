@@ -1,0 +1,26 @@
+{
+  "error.400.alerts_batch_too_large": {
+    "hash": "b3759af5e828cb6d",
+    "text": "Слишком много событий в одном отчёте (максимум {max})"
+  },
+  "error.400.alerts_invalid_report": {
+    "hash": "b8fe573da72b498c",
+    "text": "Тело отчёта имеет неверный формат"
+  },
+  "error.400.alerts_status_not_settable": {
+    "hash": "ec19a17edf1d3445",
+    "text": "Статус {status} устанавливается хранилищем по фактам и не может быть назначен вручную"
+  },
+  "error.401.alerts_service_key_required": {
+    "hash": "af814bf07ef3a6ce",
+    "text": "Требуется сервисный ключ или сессия сотрудника"
+  },
+  "error.403.alerts_service_key_invalid": {
+    "hash": "62656e1c3891de76",
+    "text": "Этот сервисный ключ недействителен"
+  },
+  "error.404.alerts_issue_not_found": {
+    "hash": "7a900c4eaca2dba6",
+    "text": "Проблема не найдена"
+  }
+}

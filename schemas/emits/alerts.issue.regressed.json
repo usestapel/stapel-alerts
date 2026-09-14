@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "alerts.issue.regressed",
+  "description": "An issue somebody marked fixed produced a new event. Worse news than a new issue, and the only status this module refuses to let a caller assert: it is the store's verdict on evidence. The payload carries the release that claimed the fix (`fixed_in_version` / `fixed_in_sha`) next to the release that is running, which is the pair a host needs to tell 'the fix is wrong' from 'the fix is not deployed'.",
+  "type": "object",
+  "required": ["issue_id", "fingerprint", "service", "environment", "level", "kind", "status", "title", "count", "first_seen", "last_seen", "regressed_at"],
+  "properties": {
+    "issue_id": { "type": "string", "format": "uuid" },
+    "fingerprint": { "type": "string" },
+    "service": { "type": "string" },
+    "environment": { "type": "string" },
+    "level": { "type": "string", "enum": ["debug", "info", "warning", "error", "fatal"] },
+    "kind": { "type": "string" },
+    "status": { "type": "string" },
+    "title": { "type": "string" },
+    "culprit": { "type": "string" },
+    "exception_class": { "type": "string" },
+    "count": { "type": "integer" },
+    "first_seen": { "type": "string", "format": "date-time" },
+    "last_seen": { "type": "string", "format": "date-time" },
+    "regressed_at": { "type": "string", "format": "date-time" },
+    "fixed_in_version": { "type": "string" },
+    "fixed_in_sha": { "type": "string" },
+    "release": { "type": "string" },
+    "request_path": { "type": "string" },
+    "trace_id": { "type": "string" }
+  },
+  "additionalProperties": true
+}

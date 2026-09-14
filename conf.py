@@ -126,6 +126,38 @@ DEFAULTS = {
     # must never become the slowest thing in a request.
     "TIMEOUT_SECONDS": 3.0,
 
+    # ── Monitoring watchdog ───────────────────────────────────────────
+    # The blind-spot watchdog (see monitoring.py). Empty PROMETHEUS_URL =
+    # off, which is the right default: a library must not guess where a
+    # host's Prometheus lives, and a watchdog pointed at nothing reads
+    # exactly like a fleet with nothing wrong.
+    #
+    #   PROMETHEUS_URL   base URL, e.g. "http://prometheus:9090"
+    #   TARGETS          scrape targets checked for `up == 0` and for having
+    #                    no `up` series at all. A bare name is matched on
+    #                    `job`; anything containing "=" is used as the label
+    #                    matcher verbatim (`instance="10.0.0.4:9100"`).
+    #   METRICS          metric names checked with `absent()` — the only
+    #                    expression that fires when a metric stops existing.
+    #   HEARTBEAT_ALERT  alertname of an always-firing dead-man's switch.
+    #   ALERTMANAGER_URL base URL; active silences become issues.
+    #   SERVICE          the tracker name findings are filed under; defaults
+    #                    to SERVICE above.
+    #   TIMEOUT_SECONDS  per HTTP request.
+    #   SCHEDULED        "yes, something runs this" — silences the W003 check
+    #                    for a deployment that drives it from cron or a k8s
+    #                    CronJob rather than from Celery beat.
+    "MONITORING": {
+        "PROMETHEUS_URL": "",
+        "TARGETS": [],
+        "METRICS": [],
+        "HEARTBEAT_ALERT": "",
+        "ALERTMANAGER_URL": "",
+        "SERVICE": "",
+        "TIMEOUT_SECONDS": 5.0,
+        "SCHEDULED": False,
+    },
+
     # ── Sentry ────────────────────────────────────────────────────────
     # When set (or when SENTRY_DSN is in the environment), each event is also
     # forwarded to Sentry and the returned id stored on the event. Storing

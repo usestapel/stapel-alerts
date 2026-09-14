@@ -9,6 +9,14 @@ def pytest_configure(config):
         import django
         django.setup()
 
+        # In a real host this happens in core's own AppConfig.ready(); here
+        # the single-module instance has to ask for it, or every emit in the
+        # suite would validate against a schema that was never registered —
+        # a payload gate that passes because nothing is gating.
+        from stapel_core.comm.schemas import autoload_schemas
+
+        autoload_schemas()
+
 
 import pytest  # noqa: E402
 
@@ -54,6 +62,34 @@ def _clean_state():
     yield
     reset_rate_limit()
     reset()
+
+
+@pytest.fixture
+def captured_events():
+    """Subscribe to this module's emits and collect the Event envelopes.
+
+    Delivery is synchronous with the outbox disabled, so the list is populated
+    by the time `emit()` returns.
+    """
+    from stapel_core.comm import action_registry, subscribe_action
+
+    from stapel_alerts.services import EVENT_ISSUE_OPENED, EVENT_ISSUE_REGRESSED
+
+    collected = []
+
+    def _handler(event):
+        collected.append(event)
+
+    names = [EVENT_ISSUE_OPENED, EVENT_ISSUE_REGRESSED]
+    for name in names:
+        subscribe_action(name, _handler)
+    try:
+        yield collected
+    finally:
+        for name in names:
+            handlers = action_registry._subscribers.get(name, [])
+            if _handler in handlers:
+                handlers.remove(_handler)
 
 
 @pytest.fixture

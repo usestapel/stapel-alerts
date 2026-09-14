@@ -1,0 +1,281 @@
+{
+  "module": "stapel-alerts",
+  "version": "0.2.0",
+  "provides": "An alert store for a fleet that has no Sentry, and the same capture() call whether one is connected or not. One row per BUG (fingerprint, status, count, first/last seen, the release that claimed the fix, whether it came back) rather than a search over log text — because the question a fix wave is reconciled against is 'which bugs are open, which are fixed, and which regressed', and that needs a status column. Every input is wired by installing the app: a WARNING+ log handler, the DRF 5xx hook, Celery task failures, core's DLQ parks, and the comm handler exceptions that are RETURNED rather than raised and which no except clause anywhere would otherwise see. Monoliths write in process; microservices POST with a per-service key, buffered and retried, and fall through to Telegram when the owner is unreachable — never over the bus, because the bus is the thing whose failures this records. A Prometheus blind-spot watchdog files the monitoring stack's own gaps as issues, on the principle that 'no alerts firing' is the observable state of both a healthy fleet and a blind one.",
+  "axes": [
+    {
+      "key": "MODE",
+      "kind": "enum",
+      "default": "auto",
+      "group": "alerts.topology",
+      "gates": {
+        "operations": [],
+        "co_gates": [],
+        "behavior": "owner: captures are written to the local database and the tracker API is served from this process. reporter: captures are POSTed to OWNER_URL with a per-service key, buffered and retried while the owner is down, and digested to the fallback channel once it has been unreachable for FALLBACK_AFTER_MINUTES."
+      },
+      "curated": {
+        "summary": "Whether this process OWNS the alert store or reports into somebody else's. \"auto\" (the default) reads the presence of OWNER_URL, so a monolith configures nothing and a microservice configures exactly the two settings it obviously must have anyway. \"owner\" / \"reporter\" force it. This is the only axis that changes what the module IS rather than what it collects. Values: auto, owner, reporter.",
+        "business_label": "Where the alerts live"
+      }
+    },
+    {
+      "key": "CAPTURE_5XX",
+      "kind": "bool",
+      "default": true,
+      "group": "alerts.inputs",
+      "gates": {
+        "operations": [],
+        "co_gates": [],
+        "behavior": "True: every 5xx (and every exception the handler could not turn into a response at all) is recorded with the request path, the view name and the user id. False: the handler still answers normally and nothing is filed."
+      },
+      "curated": {
+        "summary": "Whether anything the fleet exception handler answers with a 5xx becomes an issue. On by default. A 400 is never captured at any setting — a validation error is the API working, and a store that files them is a log nobody reads.",
+        "business_label": "Collect server errors"
+      }
+    },
+    {
+      "key": "CAPTURE_CELERY",
+      "kind": "bool",
+      "default": true,
+      "group": "alerts.inputs",
+      "gates": {
+        "operations": [],
+        "co_gates": [],
+        "behavior": "True: task_failure is connected and each failure is filed with the task name and id. False: the signal is not connected."
+      },
+      "curated": {
+        "summary": "Whether a Celery task that failed after its retries becomes an issue. On by default, and a no-op when celery is not installed. A failed task is work that did not happen and that nobody is waiting on — the class of failure most likely to be silent.",
+        "business_label": "Collect failed background jobs"
+      }
+    },
+    {
+      "key": "CAPTURE_DLQ",
+      "kind": "bool",
+      "default": true,
+      "group": "alerts.inputs",
+      "gates": {
+        "operations": [],
+        "co_gates": [],
+        "behavior": "True: core's bus_event_parked is connected and the ERROR line core also writes is suppressed, so one park is one issue rather than two with different fingerprints. False: neither is captured through this path (the plain log line is then collected by the log handler like any other ERROR)."
+      },
+      "curated": {
+        "summary": "Whether a bus dead-letter park or a task-ledger unprocessable record becomes an issue. On by default. Work the system gave up on is an alert BY CONSTRUCTION, never a judgement call: the DLQ counter says how much was dropped, this says what, with the traceback.",
+        "business_label": "Collect dropped work"
+      }
+    },
+    {
+      "key": "NOTIFY",
+      "kind": "enum",
+      "default": "telegram",
+      "group": "alerts.fallback",
+      "gates": {
+        "operations": [],
+        "co_gates": [],
+        "behavior": "telegram: stapel-notifications' telegram channel if configured, else one POST to api.telegram.org from STAPEL_ALERTS[\"FALLBACK\"]. none: nothing is sent and an unreachable owner is silent. callable/dotted path: that function receives (subject, body) and its truthiness is taken as delivery."
+      },
+      "curated": {
+        "summary": "The channel used when the alert store itself cannot be reached, and by the monitoring watchdog. \"telegram\" (the default) prefers stapel-notifications' channel when that is configured and falls back to a direct Bot API call; \"none\" disables it; a dotted path or a callable plugs in whatever the deployment actually reads. The direct path exists because in a small fleet the notifications module lives IN the alerts owner, and a fallback that needs the thing that is down is not a fallback.",
+        "business_label": "What wakes somebody up"
+      }
+    },
+    {
+      "key": "MONITORING",
+      "kind": "enum",
+      "default": {
+        "PROMETHEUS_URL": "",
+        "TARGETS": [],
+        "METRICS": [],
+        "HEARTBEAT_ALERT": "",
+        "ALERTMANAGER_URL": "",
+        "SERVICE": "",
+        "TIMEOUT_SECONDS": 5.0,
+        "SCHEDULED": false
+      },
+      "group": "alerts.monitoring",
+      "gates": {
+        "operations": [],
+        "co_gates": [],
+        "behavior": "PROMETHEUS_URL empty: the watchdog is a no-op and says so loudly if it is scheduled anyway. Configured: each finding is filed as a kind=\"monitoring\" issue and announced on the NOTIFY seam; a check that stops failing closes its issue with fixed_in_version = \"recovered <ts>\", and one that comes back regresses it."
+      },
+      "curated": {
+        "summary": "The Prometheus blind-spot watchdog. Off until PROMETHEUS_URL is set, which is the right default for a library — a watchdog pointed at nothing reads exactly like a fleet with nothing wrong. Configured, it asks every five minutes whether the monitoring stack can still see: up == 0 on each scrape target, a target with no up series at all, absent() on named metrics, a dead-man's-switch alert that stopped firing, and Alertmanager's active silences. Each blind spot becomes an issue in this same tracker AND a message on the fallback channel, because the normal notification thresholds would be silent on the ninth consecutive run — which is not less urgent than the first.",
+        "business_label": "Watch the monitoring"
+      }
+    }
+  ],
+  "extension_points": [
+    {
+      "name": "NOTIFY",
+      "kind": "import_string",
+      "summary": "The channel a deployment actually reads at 3am: a dotted path to notify(subject, body) -> bool, a callable, the shipped \"telegram\" name, or \"none\". It is used by two different mechanisms on purpose — a reporter digesting its buffer when the owner has been unreachable, and the monitoring watchdog announcing a blind spot — so a deployment configures one channel, not two."
+    },
+    {
+      "name": "alerts_exception_handler",
+      "kind": "settings_seam",
+      "summary": "REST_FRAMEWORK[\"EXCEPTION_HANDLER\"] = \"stapel_alerts.inputs.alerts_exception_handler\". It delegates to core's stapel_exception_handler — the envelope stays core's and the response a client sees does not change — and captures what came back as a 5xx or as None. A host that would rather keep its own handler calls stapel_alerts.inputs.capture_exception(exc, context) from inside it."
+    },
+    {
+      "name": "SerializerSeamMixin",
+      "kind": "subclass",
+      "summary": "Every view exposes request_serializer_class / response_serializer_class. Subclass the view, set the attribute, remount the URL — the way a host adds a field to an issue payload without forking the module."
+    },
+    {
+      "name": "alerts.issue.opened",
+      "kind": "comm_event",
+      "summary": "The subscribe hook: a bug nobody had seen before now has a row, emitted once per Issue with the issue as the tracker knows it. A host pages, opens a ticket or posts to a channel off this instead of polling GET /issues. Deliberately NOT emitted per occurrence — that would put a failing loop's whole traffic on the bus and make every subscriber re-derive the grouping this module already did."
+    },
+    {
+      "name": "alerts.issue.regressed",
+      "kind": "comm_event",
+      "summary": "The counterpart: an issue somebody marked fixed produced a new event. It carries the release that claimed the fix next to the release that is running, which is the pair that separates 'the fix is wrong' from 'the fix is not deployed'. Only the store ever sets this status — a caller able to assert a regression would be a caller able to decline to."
+    },
+    {
+      "name": "get_alerts_beat_schedule",
+      "kind": "callback",
+      "summary": "The blind-spot watchdog's schedule, shipped by the library as a splat a host merges into CELERY_BEAT_SCHEDULE (default: every five minutes). Shipped rather than documented because an unscheduled watchdog and a healthy fleet produce exactly the same output. Celery is optional: manage.py alerts_watch_monitoring is the same pass for cron."
+    },
+    {
+      "name": "TARGETS / METRICS / HEARTBEAT_ALERT",
+      "kind": "merge_registry",
+      "summary": "What the watchdog looks at, inside STAPEL_ALERTS[\"MONITORING\"]: scrape targets checked for up == 0 and for having no up series at all, metric names checked with absent(), and the alertname of an always-firing dead-man's switch. A bare target name matches on the job label; anything containing '=' is used as the label matcher verbatim, so a fleet keyed on instance needs no second setting."
+    }
+  ],
+  "surface": [
+    {
+      "name": "alerts_watch_monitoring",
+      "kind": "factory",
+      "path": "stapel_alerts.beat.alerts_watch_monitoring",
+      "intent": "One watchdog pass as a plain callable, registered as a Celery task when celery is installed. This is the name the shipped beat entry references; call it directly from a host scheduler that is neither celery beat nor cron."
+    },
+    {
+      "name": "get_alerts_beat_schedule",
+      "kind": "factory",
+      "path": "stapel_alerts.beat.get_alerts_beat_schedule",
+      "intent": "The beat entry for the watchdog, as a dict fragment to splat into CELERY_BEAT_SCHEDULE in the settings module itself — written there rather than merged from an on_after_finalize signal, so `manage.py check` (which reads settings.CELERY_BEAT_SCHEDULE) sees what beat will actually run. Pass seconds= to override the five-minute cadence; the interval is the resolution of every blind spot this finds."
+    },
+    {
+      "name": "capture",
+      "kind": "factory",
+      "path": "stapel_alerts.capture.capture",
+      "intent": "The one call every input and every library makes: capture(exc) or capture(\"text\", level=..., context={...}). Where it goes is a deployment question this answers, not a caller question — the local store when this process owns it, HTTP-with-a-service-key when it does not — which is what makes the same line correct in a monolith and in a microservice. It cannot raise (every caller is on a failure path) and it is rate limited per fingerprint, with what the limiter dropped carried into the next accepted event's occurrences so the count stays true. Never construct an Issue or an ErrorEvent directly: services.record is the only writer and doing it by hand skips grouping, the regression flip, the event cap, the Sentry forward and the post-commit hooks.",
+      "instead_of": [
+        "logging.exception",
+        "sentry_sdk.capture_exception",
+        "stapel_alerts.models.ErrorEvent.objects.create"
+      ]
+    },
+    {
+      "name": "reset_rate_limit",
+      "kind": "factory",
+      "path": "stapel_alerts.capture.reset_rate_limit",
+      "intent": "Drop the per-fingerprint limiter's state. A TEST lever and the thing a reloaded worker wants: the limiter is process state, not database state, so a suite's rollback does not touch it and a carried-over window silently swallows the first capture of the next case."
+    },
+    {
+      "name": "announce",
+      "kind": "factory",
+      "path": "stapel_alerts.monitoring.announce",
+      "intent": "Push the run's verdict at the NOTIFY seam directly, on EVERY run that has something to say. Deliberately not subject to the new/regressed/spike thresholds the rest of the module uses: a blind spot on its ninth consecutive run is not less urgent than on its first, and 'the monitoring is still blind' is the message somebody needs at the moment they look at their phone."
+    },
+    {
+      "name": "check_alertmanager",
+      "kind": "predicate",
+      "path": "stapel_alerts.monitoring.check_alertmanager",
+      "intent": "Alertmanager's active silences, and an Alertmanager that does not answer. A silence is somebody muting a page at 3am; it becomes a blind spot the moment they go back to sleep, and the thing nobody does is come back and remove it — which is why it is reported as an issue with a rising count rather than left to a UI nobody opens."
+    },
+    {
+      "name": "check_heartbeat",
+      "kind": "predicate",
+      "path": "stapel_alerts.monitoring.check_heartbeat",
+      "intent": "The dead-man's switch: is the always-firing HEARTBEAT_ALERT still firing? If it is not, the whole chain — rule evaluation, Alertmanager, the receiver — is broken, and every other alert in it is broken the same way while showing nothing."
+    },
+    {
+      "name": "check_metrics",
+      "kind": "predicate",
+      "path": "stapel_alerts.monitoring.check_metrics",
+      "intent": "absent(<metric>) on each named metric. absent() is the only expression that fires when a metric stops existing; every other one returns nothing, and nothing does not fire."
+    },
+    {
+      "name": "check_targets",
+      "kind": "predicate",
+      "path": "stapel_alerts.monitoring.check_targets",
+      "intent": "up == 0 on each configured scrape target, and the harder case: a target with no up series at all, which means it was dropped from the scrape config or renamed. That second one is strictly worse than a down exporter — every expression over its metrics returns no data, and an alert on no data does not fire."
+    },
+    {
+      "name": "close_recovered",
+      "kind": "factory",
+      "path": "stapel_alerts.monitoring.close_recovered",
+      "intent": "Close the issue of every expected check that did not fire this run, with fixed_in_version = 'recovered <ts>' rather than a release, because nobody deployed anything. Owner mode only — a reporter has no store to close anything in. A watchdog that can only OPEN issues produces a tracker full of blind spots that were fixed weeks ago, and a tracker nobody trusts is a tracker nobody reads."
+    },
+    {
+      "name": "collect",
+      "kind": "predicate",
+      "path": "stapel_alerts.monitoring.collect",
+      "intent": "Ask every configured monitoring question once and return the findings, without filing, closing or notifying anything. This is what `manage.py alerts_watch_monitoring --dry-run` uses — the way to find out what the watchdog would say before it says it to somebody's phone at 3am."
+    },
+    {
+      "name": "expected_checks",
+      "kind": "predicate",
+      "path": "stapel_alerts.monitoring.expected_checks",
+      "intent": "Every (check, target) pair this configuration CAN produce. Recovery reads it: a finding's absence is only evidence of recovery if the run actually asked the question, so removing a target from the config must not close its issue as 'recovered' — a lie the tracker would then repeat forever."
+    },
+    {
+      "name": "fingerprint_of",
+      "kind": "predicate",
+      "path": "stapel_alerts.monitoring.fingerprint_of",
+      "intent": "The fingerprint capture() will compute for a given Finding — the same expression the ingest makes, written once so recovery can find an issue by its id instead of by matching text. If you need to correlate a monitoring issue with the check that produced it, this is the link."
+    },
+    {
+      "name": "instant_query",
+      "kind": "predicate",
+      "path": "stapel_alerts.monitoring.instant_query",
+      "intent": "Run one PromQL instant query against the configured Prometheus and return its result vector. Raises PrometheusUnreachable for a transport failure, a non-2xx, OR a 200 whose body says status != success — all three mean 'this question was not answered', and returning an empty vector instead would make every check above report health at exactly the moment nothing could be seen."
+    },
+    {
+      "name": "is_configured",
+      "kind": "predicate",
+      "path": "stapel_alerts.monitoring.is_configured",
+      "intent": "Has a host pointed the watchdog at a Prometheus? Read this before scheduling it — unconfigured is a no-op rather than an error, and the failure mode of an unconfigured watchdog is that it looks exactly like a fleet with nothing wrong."
+    },
+    {
+      "name": "monitoring_settings",
+      "kind": "predicate",
+      "path": "stapel_alerts.monitoring.monitoring_settings",
+      "intent": "The STAPEL_ALERTS[\"MONITORING\"] block as a plain dict, read at call time. Use it instead of reaching into django.conf.settings: the block resolves through AppSettings (dict, then flat setting, then environment, then default), and a host that indexes the raw setting sees only the first of those four."
+    },
+    {
+      "name": "report",
+      "kind": "factory",
+      "path": "stapel_alerts.monitoring.report",
+      "intent": "File each finding as a kind=\"monitoring\" event through capture(), so a monitoring blind spot is grouped, counted and closed like any other bug in the tracker."
+    },
+    {
+      "name": "run",
+      "kind": "factory",
+      "path": "stapel_alerts.monitoring.run",
+      "intent": "One pass of the monitoring blind-spot watchdog: collect, file, close what recovered, announce. Returns a summary and never raises, because a crashing watchdog is a blind spot of its own. Call it from your own scheduler if you are not using the shipped beat entry or the management command; do not reimplement the pass out of collect/report/close_recovered, since the ORDER is load-bearing (filing before closing is what records a check that flapped inside one run instead of dropping it)."
+    }
+  ],
+  "operations_total": 5,
+  "requires": [
+    {
+      "module": "stapel-core",
+      "optional": false,
+      "reason": "AppSettings config layer, the fleet error envelope + error registry, IsStaffUser, the observability metrics facade and REDACT_FIELDS, trace ids, the GDPR provider registry, bus_event_parked (the structured DLQ input), comm deliver_to_subscribers (handler failures) and the comm outbox (alerts.issue.opened / .regressed)"
+    },
+    {
+      "module": "stapel-notifications",
+      "optional": true,
+      "reason": "email/chat delivery of the three notification thresholds, and the telegram channel the fallback prefers when a deployment already has a bot wired in. Absent, the module sends the same message through its own direct Bot API call"
+    },
+    {
+      "module": "celery",
+      "optional": true,
+      "reason": "the task_failure input, and the beat entry for the monitoring watchdog. Without it the input is a no-op and the watchdog is a management command any scheduler can run"
+    },
+    {
+      "module": "sentry-sdk",
+      "optional": true,
+      "reason": "the export extra (pip install 'stapel-alerts[sentry]'): each event is forwarded and its id stored back. Storing locally is never conditional on it"
+    }
+  ]
+}

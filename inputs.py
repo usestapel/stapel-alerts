@@ -5,13 +5,14 @@ installing it, not by instrumenting for it. So each of these is a subscription
 to something the fleet already does:
 
 ``AlertsLogHandler``      a ``logging.Handler`` at WARNING+ — the broadest net,
-                          and the one that catches the DLQ line on any core.
+                          and the only input that needs no cooperation at all
+                          from what it is watching.
 ``capture_exception``     the hook the fleet exception handler calls for 5xx.
 ``on_task_failure``       Celery's ``task_failure`` signal.
-``on_bus_event_parked``   core's ``bus_event_parked`` signal (core >= 0.68.1):
-                          a DLQ park or a task-ledger ``unprocessable``, with
-                          the traceback still attached. Work that was dropped
-                          is an alert BY CONSTRUCTION, never a judgement call.
+``on_bus_event_parked``   core's ``bus_event_parked`` signal: a DLQ park or a
+                          task-ledger ``unprocessable``, with the traceback
+                          still attached. Work that was dropped is an alert BY
+                          CONSTRUCTION, never a judgement call.
 ``wrap_deliver_to_subscribers``  comm handler failures, at the one place the
                           fleet delivers an Action to its handlers.
 
@@ -27,12 +28,12 @@ logger = logging.getLogger(__name__)
 #: Loggers whose records the log handler must NOT capture because a STRUCTURED
 #: input in this process already reports the same failure, with more context.
 #:
-#: Core logs a DLQ park at ERROR and a comm handler failure at ERROR — which is
-#: what makes those failures visible on a core too old to announce them. Once
-#: this process has connected the structured input, the log line is the SAME
-#: failure a second time, and because the two carry different messages they
-#: would fingerprint apart and open two issues for one bug. The structured
-#: input wins; the log line stands in only where the structured one is absent.
+#: Core logs a DLQ park at ERROR and a comm handler failure at ERROR, and it
+#: does so IN ADDITION to announcing them — the line is written for the human
+#: reading container output, the signal for a listener. Once this process has
+#: connected the structured input, the log line is the SAME failure a second
+#: time, and because the two carry different messages they would fingerprint
+#: apart and open two issues for one bug. The structured input wins.
 _SUPERSEDED_LOGGERS: set[str] = set()
 
 
@@ -258,17 +259,22 @@ def on_bus_event_parked(sender=None, topic="", event=None, reason="", exc_info=N
 
 
 def connect_dlq() -> bool:
-    """Connect to core's park signal when the installed core has one.
+    """Connect to core's park signal. Unconditional — the floor guarantees it.
 
-    Cores below 0.68.1 have no signal; on those the ERROR line
-    ``record_parked`` writes is caught by :class:`AlertsLogHandler` instead,
-    so a park is never invisible — it just arrives as text rather than as
-    fields. Returns whether the structured path is available.
+    Until 0.2 this was wrapped in a try/except that fell back to reading the
+    ERROR line ``record_parked`` writes, because ``bus_event_parked`` only
+    arrived in core 0.68.1 and the floor was 0.67.0. The floor is 0.68.1 now,
+    so the fallback was a branch that could not be reached by any supported
+    core and could not be tested against one — a path that is present, untried
+    and believed to work is the shape of a gate that proves nothing.
+
+    Note that ``record_parked`` still writes its ERROR line *next to* the
+    signal, so the supersession below is not vestigial: without it a park
+    opens two issues with two fingerprints, one from the signal and one from
+    the text.
     """
-    try:
-        from stapel_core.signals import bus_event_parked
-    except ImportError:
-        return False
+    from stapel_core.signals import bus_event_parked
+
     bus_event_parked.connect(on_bus_event_parked, weak=False, dispatch_uid="stapel_alerts")
     _SUPERSEDED_LOGGERS.add("stapel_core.bus.dlq")
     return True

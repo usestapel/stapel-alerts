@@ -1,0 +1,8 @@
+{
+  "error.400.alerts_batch_too_large": "Слишком много событий в одном отчёте (максимум {max})",
+  "error.400.alerts_invalid_report": "Тело отчёта имеет неверный формат",
+  "error.400.alerts_status_not_settable": "Статус {status} устанавливается хранилищем по фактам и не может быть назначен вручную",
+  "error.401.alerts_service_key_required": "Требуется сервисный ключ или сессия сотрудника",
+  "error.403.alerts_service_key_invalid": "Этот сервисный ключ недействителен",
+  "error.404.alerts_issue_not_found": "Проблема не найдена"
+}

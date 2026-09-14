@@ -76,7 +76,21 @@ Each input is individually switchable. `LOG_EXCLUDE` is the loop-breaker:
 records from `stapel_alerts.*` are never captured, because a failure to report
 an alert logs an error which becomes an alert which fails to report.
 
-### 6. Grouping knobs — `SIMILARITY_THRESHOLD`, `SIMILARITY_CANDIDATES`
+### 6. `STAPEL_ALERTS["MONITORING"]` — the blind-spot watchdog (axis)
+
+`PROMETHEUS_URL` empty (the default) = off. Configured, `TARGETS` / `METRICS`
+/ `HEARTBEAT_ALERT` / `ALERTMANAGER_URL` say what to look at, and
+`stapel_alerts.beat.get_alerts_beat_schedule()` is the schedule to splat into
+`CELERY_BEAT_SCHEDULE`. `manage.py alerts_watch_monitoring` is the same pass
+for cron; `--dry-run` prints without filing.
+
+### 7. The two comm facts — `alerts.issue.opened` / `alerts.issue.regressed`
+
+Schemas in `schemas/emits/`, registered by core's `autoload_schemas()`,
+validated on every emit. Subscribe with `@on_action`. Two facts, not one per
+occurrence.
+
+### 8. Grouping knobs — `SIMILARITY_THRESHOLD`, `SIMILARITY_CANDIDATES`
 
 Lower the threshold to merge more aggressively. Think twice: a wrong merge
 hides a live bug behind one marked fixed, and that failure is silent.
@@ -98,6 +112,20 @@ hides a live bug behind one marked fixed, and that failure is silent.
   transaction. Creating an `Issue` or an `ErrorEvent` directly skips all five.
 - **`capture()` cannot raise, and is re-entrancy guarded.** Every caller is on
   a failure path.
+- **The issue fact is emitted AFTER commit, in its own transaction.** Not in
+  the ingest's atomic block, where the rest of the fleet emits. `emit` marks
+  its transaction rollback-only when it fails, so emitting inside the ingest
+  would mean a broken outbox *deletes* the alert row. The bus is the thing
+  whose failures this store records. Do not "fix" this to match the fleet
+  pattern without reading `services.emit_issue_fact`.
+- **The watchdog's message is fixed per (check, target).** The run's numbers
+  live in the event context, out of the fingerprint, so a scrape gap that
+  recurs every night is one issue with a count of ninety and not ninety
+  issues. Do not put the gap length back into the message.
+- **Recovery only closes checks the run actually asked.** `expected_checks()`
+  is the universe; a finding's absence is evidence of recovery only if the
+  question was put. Closing a check that was removed from the config would
+  write a lie into the tracker that the tracker then repeats forever.
 
 ## What this module deliberately does NOT do
 
@@ -117,7 +145,9 @@ hides a live bug behind one marked fixed, and that failure is silent.
 | seam | why |
 |---|---|
 | `stapel_core.conf.AppSettings` | the `STAPEL_ALERTS` namespace |
-| `stapel_core.signals.bus_event_parked` | DLQ / task-ledger input (core ≥ 0.68.1) |
+| `stapel_core.signals.bus_event_parked` | DLQ / task-ledger input |
+| `stapel_core.comm.emit` + `schemas/emits/` | `alerts.issue.opened` / `.regressed` |
+| `stapel_core.i18n` | the ru/es error catalogs and their provenance gate |
 | `stapel_core.comm.actions.deliver_to_subscribers` | comm handler failures |
 | `stapel_core.django.api.errors` | the fleet error envelope + error registry |
 | `stapel_core.django.api.permissions.IsStaffUser` | the tracker wall |
@@ -128,11 +158,12 @@ hides a live bug behind one marked fixed, and that failure is silent.
 | `stapel_notifications` (optional) | email/chat + the telegram channel |
 | `sentry_sdk` (optional extra) | the export |
 
-## Not yet here (0.2 candidates)
+## Not yet here (0.3 candidates)
 
-- `@stapel/alerts-react` — the feed pair.
-- The Prometheus blind-spot watchdog script itself (the payload it posts is
-  documented in README.md and accepted today).
-- A comm Action so a host can subscribe to `alerts.issue.opened`.
-- An i18n errors catalog (the six owned keys render as English fallbacks).
+- `@stapel/alerts-react` — the feed pair (built separately).
 - Per-issue assignment and a "who is looking at this" field.
+- Alertmanager *silence age*: a silence that outlives its stated end is a
+  different bug from one somebody set an hour ago, and today they are one
+  issue.
+- A native-reader pass over the ru/es catalogs. Every string is machine
+  translation (`origin: llm`) and the gate counts them as unreviewed.

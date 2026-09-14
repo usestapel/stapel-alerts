@@ -4,6 +4,111 @@ All notable changes to stapel-alerts are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0 semver: **minor = breaking**, patch = compatible.
 
+## [0.2.0] — 2026-09-14
+
+The blind spot in the monitoring, the fact on the bus, and the six refusals
+that stopped speaking English.
+
+### The watchdog that watches the watchman
+
+Every other input here reports a failure the fleet HAD. This one reports a
+failure the fleet cannot see — and the reason it belongs in an alert store is
+that a monitoring stack with a blind spot and a healthy fleet produce the same
+picture: no alerts. "Nothing is firing" is the observable state of both, and
+the only way to tell them apart is for something outside the stack to ask.
+
+`manage.py alerts_watch_monitoring`, and `stapel_alerts.beat` for the beat
+entry (`alerts-watch-monitoring`, every five minutes, shipped as a splat a
+host merges into `CELERY_BEAT_SCHEDULE`). Six checks: `up == 0` on each
+configured scrape target; a target with **no** `up` series at all — dropped
+from the scrape config or renamed, which is strictly worse, because every
+expression over its metrics now returns no data and an alert on no data does
+not fire; `absent()` on named metrics; a dead-man's-switch alert that stopped
+firing; Alertmanager's active silences; and an Alertmanager or Prometheus that
+does not answer. A 200 whose body says `status != success` counts as blind,
+not as an empty result — reading it as "no series" would make every check
+report health at exactly the moment nothing could be seen.
+
+Each finding is a `kind="monitoring"` issue **and** a message on the `NOTIFY`
+seam, on every run that has one. Both channels, per the owner's rule: the
+notification thresholds (new / regressed / spike) would be silent on a blind
+spot's ninth consecutive run, which is not less urgent than its first. If the
+cadence is too loud the cadence is a setting; silence is not.
+
+A finding's message is fixed per `(check, target)` and the run's numbers live
+in the context, so a scrape gap that recurs every night is one issue with a
+count of ninety. A check that stops failing closes its issue with
+`fixed_in_version = "recovered <ts>"` — a watchdog that can only open issues
+produces a tracker full of blind spots that were fixed weeks ago. A check that
+is no longer **configured** is not closed: nothing recovered, nobody looked,
+and the lie would be repeated forever. An Alertmanager silence is keyed by its
+matchers rather than its id, which is fresh every time somebody re-silences
+the same alert.
+
+`stapel_alerts.W003` fires when the watchdog is configured, this process runs
+beat, and nothing schedules it — the one misconfiguration in this module whose
+symptom is indistinguishable from health.
+
+### Two facts on the comm bus
+
+`alerts.issue.opened` and `alerts.issue.regressed`, with schemas in
+`schemas/emits/` that core's autoloader registers and validates on every emit.
+A host pages, opens a ticket or posts to a channel off these instead of
+polling `GET /issues`. `regressed` carries the release that claimed the fix
+next to the release that is running — the pair that separates "the fix is
+wrong" from "the fix is not deployed".
+
+Two facts, never one per occurrence: an event per occurrence would put a
+failing loop's whole traffic on the bus and make every subscriber re-derive
+the grouping this module already did.
+
+They are emitted **after** the issue has committed, in a transaction of their
+own, and not in the ingest's atomic block where the rest of the fleet emits.
+`emit` marks its transaction rollback-only when it fails, so emitting inside
+the ingest would mean a broken outbox DELETES the alert row. The bus is the
+thing whose failures this store records; it has to record them on the day the
+bus is what is broken.
+
+### The six keys speak ru and es
+
+`translations/errors.{ru,es}.json` with the shared `.state.json` provenance
+sidecar, `docs/errors.{en,ru,es}.md`, and the coverage/staleness/params/
+byte-stability gate in `tests/test_error_i18n.py`. Every string is a machine
+translation (`origin: llm`, the gate's unreviewed counter) — the builtin
+corpus carries none of these keys.
+
+This also silences `[warning:unshipped]`, which `make contract` printed on
+every emission of 0.1: a translated deployment rendered this module's
+refusals in English next to everything else's Russian, and the person reading
+a 403 at 3am had to work out that the mismatch was the library and not the
+bug.
+
+### The DLQ input has no fallback left
+
+Core floor `>=0.68.1` — the release that announces a park rather than only
+counting it. `connect_dlq()` is unconditional; the `try/except ImportError`
+and its log-line fallback are gone. On a 0.67 core that path was reachable; on
+every core this now supports it was present, untried and believed to work,
+which is the shape of a gate that proves nothing.
+
+`superseded_loggers()` **stays**, and is not vestigial: `record_parked` still
+writes its ERROR line beside the signal (the line is for the human reading
+container output, the signal for a listener), and `deliver_to_subscribers`
+logs a handler failure it also returns. Without the supersession one park is
+two issues with two fingerprints.
+
+### Contract artifacts
+
+`docs/capabilities.json` (six axes: topology, the fallback channel, the three
+input switches, the watchdog), `docs/llms.txt`, and a generated `README.md`
+assembled from `docs/readme.md` plus the artifacts — the sibling-library
+pipeline, emitted by `make contract` and drift-gated by `make contract-check`
+and the suite. `docs/capabilities.meta.json` is the hand-curated half.
+
+### Requires
+
+`stapel-core>=0.68.1,<1.0`.
+
 ## [0.1.0] — 2026-09-13
 
 First release. An alert store for a fleet that has no Sentry — and the same
@@ -96,6 +201,7 @@ extra, storing the event id back and never conditioning the local row on it.
 
 ### Requires
 
-`stapel-core>=0.67.0,<1.0`. The structured DLQ input needs
-`stapel_core.signals.bus_event_parked` (core 0.68.1); below that a park is
-still captured, through the ERROR line `record_parked` writes.
+`stapel-core>=0.67.0,<1.0` at the time. The structured DLQ input needed
+`stapel_core.signals.bus_event_parked` (core 0.68.1); below that a park was
+still captured, through the ERROR line `record_parked` writes. 0.2 raises the
+floor and drops that fallback.

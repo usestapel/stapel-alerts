@@ -11,6 +11,7 @@ E_NO_SERVICE = "stapel_alerts.E001"
 E_REPORTER_NO_KEY = "stapel_alerts.E002"
 W_NO_FALLBACK = "stapel_alerts.W001"
 W_OWNER_URL_IN_OWNER_MODE = "stapel_alerts.W002"
+W_WATCHDOG_NOT_SCHEDULED = "stapel_alerts.W003"
 
 
 @register()
@@ -75,6 +76,51 @@ def check_alerts_configuration(app_configs, **kwargs):
     return issues
 
 
+@register()
+def check_watchdog_is_scheduled(app_configs, **kwargs):
+    """A configured blind-spot watchdog that nothing ever runs.
+
+    This is the check with the sharpest point in the module. Every other
+    misconfiguration here produces silence where there should be alerts; this
+    one produces silence that looks exactly like health — a Prometheus URL in
+    settings, a watchdog that has never run once, and a fleet whose monitoring
+    could have been blind for a month.
+
+    Deliberately silent when the host has no beat schedule at all: a
+    deployment that schedules nothing with Celery is running cron or a k8s
+    CronJob, and that is not this check's business. Say so explicitly with
+    ``STAPEL_ALERTS["MONITORING"]["SCHEDULED"] = True``.
+    """
+    from django.conf import settings
+
+    from .beat import WATCH_TASK_NAME
+    from .monitoring import is_configured, monitoring_settings
+
+    if not is_configured() or monitoring_settings().get("SCHEDULED"):
+        return []
+
+    schedule = getattr(settings, "CELERY_BEAT_SCHEDULE", None) or {}
+    if not schedule:
+        return []
+    if any(entry.get("task") == WATCH_TASK_NAME for entry in schedule.values()):
+        return []
+
+    return [
+        Warning(
+            'STAPEL_ALERTS["MONITORING"]["PROMETHEUS_URL"] is set but '
+            f"CELERY_BEAT_SCHEDULE has no entry for {WATCH_TASK_NAME}: this "
+            "process runs beat for other work and never runs the blind-spot "
+            "watchdog. A watchdog that never runs and a fleet with nothing "
+            "wrong produce the same output.",
+            hint="CELERY_BEAT_SCHEDULE = {**get_alerts_beat_schedule(), ...} "
+            "(stapel_alerts.beat) — or run `manage.py alerts_watch_monitoring` "
+            'from cron and set STAPEL_ALERTS["MONITORING"]["SCHEDULED"] = True '
+            "to declare that you did.",
+            id=W_WATCHDOG_NOT_SCHEDULED,
+        )
+    ]
+
+
 def _fallback_configured(alerts_settings) -> bool:
     notify = alerts_settings.NOTIFY
     if callable(notify):
@@ -87,8 +133,10 @@ def _fallback_configured(alerts_settings) -> bool:
 
 __all__ = [
     "check_alerts_configuration",
+    "check_watchdog_is_scheduled",
     "E_NO_SERVICE",
     "E_REPORTER_NO_KEY",
     "W_NO_FALLBACK",
     "W_OWNER_URL_IN_OWNER_MODE",
+    "W_WATCHDOG_NOT_SCHEDULED",
 ]

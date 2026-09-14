@@ -1,0 +1,26 @@
+{
+  "error.400.alerts_batch_too_large": {
+    "hash": "b3759af5e828cb6d",
+    "text": "Demasiados eventos en un solo informe (máximo {max})"
+  },
+  "error.400.alerts_invalid_report": {
+    "hash": "b8fe573da72b498c",
+    "text": "El contenido del informe tiene un formato no válido"
+  },
+  "error.400.alerts_status_not_settable": {
+    "hash": "ec19a17edf1d3445",
+    "text": "El estado {status} lo establece el almacén a partir de las pruebas y no se puede asignar"
+  },
+  "error.401.alerts_service_key_required": {
+    "hash": "af814bf07ef3a6ce",
+    "text": "Se requiere una clave de servicio o una sesión de personal"
+  },
+  "error.403.alerts_service_key_invalid": {
+    "hash": "62656e1c3891de76",
+    "text": "Esta clave de servicio no es válida"
+  },
+  "error.404.alerts_issue_not_found": {
+    "hash": "7a900c4eaca2dba6",
+    "text": "Incidencia no encontrada"
+  }
+}

@@ -77,6 +77,26 @@ STAPEL_ALERTS = {
 | `RETRY_BACKOFF` | `[1, 5, 30]` | seconds between attempts |
 | `TIMEOUT_SECONDS` | `3.0` | per HTTP attempt |
 
+### Monitoring watchdog
+
+`STAPEL_ALERTS["MONITORING"]`, a nested block. Empty `PROMETHEUS_URL` = off.
+
+| key | default | what it decides |
+|---|---|---|
+| `PROMETHEUS_URL` | `""` | base URL, e.g. `http://prometheus:9090`. Empty disables the whole watchdog |
+| `TARGETS` | `[]` | scrape targets checked for `up == 0` **and** for having no `up` series at all. A bare name matches on `job`; anything containing `=` is used as the label matcher verbatim (`instance="10.0.0.4:9100"`) |
+| `METRICS` | `[]` | metric names checked with `absent()` — the only expression that fires when a metric stops existing |
+| `HEARTBEAT_ALERT` | `""` | alertname of an always-firing dead-man's switch. Empty skips the check |
+| `ALERTMANAGER_URL` | `""` | base URL; active silences become issues, and an Alertmanager that does not answer is one too |
+| `SERVICE` | `""` | tracker name findings are filed under. Falls back to `SERVICE` |
+| `TIMEOUT_SECONDS` | `5.0` | per HTTP request |
+| `SCHEDULED` | `False` | "something runs this" — silences `W003` for a deployment driving it from cron rather than Celery beat |
+
+Findings go to the tracker **and** to the `NOTIFY` seam on every run that has
+one — not on the new/regressed/spike thresholds, because a blind spot on its
+ninth consecutive run is not less urgent than on its first. The cadence is
+the knob (`get_alerts_beat_schedule(seconds=...)`); silence is not.
+
 ### Sentry
 
 | key | default | what it decides |
@@ -91,6 +111,7 @@ STAPEL_ALERTS = {
 | `stapel_alerts.E002` | error | reporter mode with no `SERVICE_KEY` |
 | `stapel_alerts.W001` | warning | reporter mode with no fallback channel |
 | `stapel_alerts.W002` | warning | owner mode with an `OWNER_URL` that is ignored |
+| `stapel_alerts.W003` | warning | the watchdog is configured, this process runs beat, and nothing schedules it |
 
 ## `stapel-service.toml` example
 

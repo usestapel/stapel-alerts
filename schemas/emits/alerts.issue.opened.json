@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "alerts.issue.opened",
+  "description": "A bug nobody had seen before now has a row in the tracker. Emitted once per Issue, from the post-commit hook of the ingest that created it — so a host can page, open a ticket or post to a channel without polling GET /issues. The payload carries the issue as the tracker knows it at that moment; `count` is 1 or the batch the reporter stood for, never the running total of a later occurrence.",
+  "type": "object",
+  "required": ["issue_id", "fingerprint", "service", "environment", "level", "kind", "status", "title", "count", "first_seen", "last_seen"],
+  "properties": {
+    "issue_id": { "type": "string", "format": "uuid" },
+    "fingerprint": { "type": "string" },
+    "service": { "type": "string" },
+    "environment": { "type": "string" },
+    "level": { "type": "string", "enum": ["debug", "info", "warning", "error", "fatal"] },
+    "kind": { "type": "string" },
+    "status": { "type": "string" },
+    "title": { "type": "string" },
+    "culprit": { "type": "string" },
+    "exception_class": { "type": "string" },
+    "count": { "type": "integer" },
+    "first_seen": { "type": "string", "format": "date-time" },
+    "last_seen": { "type": "string", "format": "date-time" },
+    "release": { "type": "string" },
+    "request_path": { "type": "string" },
+    "trace_id": { "type": "string" }
+  },
+  "additionalProperties": true
+}

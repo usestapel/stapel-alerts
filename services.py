@@ -36,6 +36,17 @@ logger = logging.getLogger(__name__)
 MAX_CONTEXT_VALUE = 2000
 MAX_TRACE = 60000
 
+#: The two facts this module puts on the comm bus. Schemas live in
+#: ``schemas/emits/`` and are registered by core's ``autoload_schemas()``.
+#:
+#: Only these two. An event per OCCURRENCE would be the bus carrying the
+#: traffic of a failing loop — ten thousand deliveries about one bug — and a
+#: subscriber would have to rebuild the grouping this module already did.
+#: What a host wants to know is "a new bug exists" and "a closed bug is back",
+#: which are the same two thresholds the notification path uses.
+EVENT_ISSUE_OPENED = "alerts.issue.opened"
+EVENT_ISSUE_REGRESSED = "alerts.issue.regressed"
+
 
 def redact(context: dict | None) -> dict:
     """Strip secret-bearing keys out of *context* before it is stored.
@@ -274,7 +285,7 @@ def _export_to_sentry(issue: Issue, event: ErrorEvent) -> None:
 
 
 def _after_record(issue: Issue, event: ErrorEvent, *, created: bool, regressed: bool) -> None:
-    """Metrics and notifications, after commit, never in the caller's way."""
+    """Metrics, notifications and the comm fact, after commit."""
     from .metrics import observe_event
     from .notify import notify_issue
 
@@ -284,8 +295,77 @@ def _after_record(issue: Issue, event: ErrorEvent, *, created: bool, regressed: 
             notify_issue(issue, event, created=created, regressed=regressed)
         except Exception:
             logger.warning("alerts: post-record hooks failed", exc_info=True)
+        emit_issue_fact(issue, event, created=created, regressed=regressed)
 
     transaction.on_commit(_run)
+
+
+def issue_fact_payload(issue: Issue, event: ErrorEvent | None = None) -> dict:
+    """The issue as the two emitted facts carry it. One shape, one place."""
+    payload = {
+        "issue_id": str(issue.id),
+        "fingerprint": issue.fingerprint,
+        "service": issue.service,
+        "environment": issue.environment,
+        "level": issue.level,
+        "kind": issue.kind,
+        "status": issue.status,
+        "title": issue.title,
+        "culprit": issue.culprit,
+        "exception_class": issue.exception_class,
+        "count": int(issue.count),
+        "first_seen": issue.first_seen.isoformat(),
+        "last_seen": issue.last_seen.isoformat(),
+    }
+    if issue.regressed_at:
+        payload["regressed_at"] = issue.regressed_at.isoformat()
+    if issue.fixed_in_version:
+        payload["fixed_in_version"] = issue.fixed_in_version
+    if issue.fixed_in_sha:
+        payload["fixed_in_sha"] = issue.fixed_in_sha
+    if event is not None:
+        payload["release"] = event.release
+        payload["request_path"] = event.request_path
+        payload["trace_id"] = event.trace_id
+    return payload
+
+
+def emit_issue_fact(
+    issue: Issue, event: ErrorEvent | None = None, *, created: bool, regressed: bool
+) -> str:
+    """Put ``alerts.issue.opened`` / ``alerts.issue.regressed`` on the bus.
+
+    **After** the issue has committed, and inside a transaction of its own —
+    not in the ingest's atomic block, which is where the rest of the fleet
+    emits. The exception is deliberate and it is the whole premise of this
+    library: ``emit`` marks the surrounding transaction rollback-only when it
+    fails, so emitting inside the ingest would mean a broken outbox DELETES
+    the alert row. The bus is the thing whose failures this store records; a
+    store that loses the record when the bus is down records nothing on
+    exactly the day it matters.
+
+    So the fact is best-effort on top of a row that is already safe. A host
+    that needs at-least-once delivery of it gets that from the outbox's own
+    relay, once the outbox works again.
+    """
+    from stapel_core.comm import emit
+
+    name = (
+        EVENT_ISSUE_REGRESSED
+        if regressed
+        else EVENT_ISSUE_OPENED
+        if created
+        else ""
+    )
+    if not name:
+        return ""
+    try:
+        with transaction.atomic():
+            emit(name, issue_fact_payload(issue, event), key=str(issue.id))
+    except Exception:
+        logger.warning("alerts: %s was not emitted", name, exc_info=True)
+        return ""
+    return name
 
 
 # ── Tracker operations (what an agent calls) ────────────────────────────
@@ -370,6 +450,10 @@ def _names_subject(value, subject: str) -> bool:
 
 
 __all__ = [
+    "EVENT_ISSUE_OPENED",
+    "EVENT_ISSUE_REGRESSED",
+    "emit_issue_fact",
+    "issue_fact_payload",
     "record",
     "find_issue",
     "redact",

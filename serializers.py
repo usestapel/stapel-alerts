@@ -56,8 +56,39 @@ class IssueDetailSerializer(IssueSerializer):
         read_only_fields = fields
 
 
+class IssuePageSerializer(serializers.Serializer):
+    """The envelope ``GET /issues`` returns: ``{count, offset, limit, results}``.
+
+    Both the wire and the contract. The list view renders its response THROUGH
+    this serializer and declares it as the response, so the schema cannot say
+    ``Issue[]`` while the body carries a page — which is what 0.2.0 did, with
+    a hand-written ``responses=IssueSerializer(many=True)`` that the generator
+    had no way to check against the method body.
+
+    ``results`` is the row serializer the view resolved through its seam
+    (``SerializerSeamMixin``), so a host that swaps the row shape gets the same
+    envelope around its own rows.
+    """
+
+    count = serializers.IntegerField(min_value=0)
+    offset = serializers.IntegerField(min_value=0)
+    limit = serializers.IntegerField(min_value=1)
+    results = IssueSerializer(many=True)
+
+    def __init__(self, *args, row_serializer_class=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if row_serializer_class is not None and row_serializer_class is not IssueSerializer:
+            self.fields["results"] = row_serializer_class(many=True)
+
+
 class IssuePatchSerializer(serializers.Serializer):
-    """``PATCH /issues/{id}`` — status and/or note."""
+    """``PATCH /issues/{id}`` — status, note, and/or the mute deadline.
+
+    ``muted_until`` on its own is a mute: the field has no meaning in any other
+    status, so a patch that carries only the deadline sets ``status=muted``
+    (``null`` for a mute with no deadline). With any status other than
+    ``muted`` the deadline is ignored and cleared.
+    """
 
     status = serializers.ChoiceField(
         choices=[s.value for s in SETTABLE_STATUSES], required=False
@@ -115,6 +146,7 @@ __all__ = [
     "IssueSerializer",
     "IssueDetailSerializer",
     "ErrorEventSerializer",
+    "IssuePageSerializer",
     "IssuePatchSerializer",
     "IssueFixSerializer",
     "ReportEventSerializer",

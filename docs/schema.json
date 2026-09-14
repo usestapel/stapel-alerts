@@ -20,10 +20,19 @@
           },
           {
             "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Page size, 1..200; default 50. Out-of-range values are clamped and the envelope echoes the limit that was applied."
+          },
+          {
+            "in": "query",
             "name": "offset",
             "schema": {
               "type": "integer"
-            }
+            },
+            "description": "Rows to skip; default 0"
           },
           {
             "in": "query",
@@ -70,10 +79,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Issue"
-                  }
+                  "$ref": "#/components/schemas/IssuePage"
                 }
               }
             },
@@ -664,6 +670,36 @@
           }
         }
       },
+      "IssuePage": {
+        "type": "object",
+        "description": "The envelope ``GET /issues`` returns: ``{count, offset, limit, results}``.\n\nBoth the wire and the contract. The list view renders its response THROUGH\nthis serializer and declares it as the response, so the schema cannot say\n``Issue[]`` while the body carries a page — which is what 0.2.0 did, with\na hand-written ``responses=IssueSerializer(many=True)`` that the generator\nhad no way to check against the method body.\n\n``results`` is the row serializer the view resolved through its seam\n(``SerializerSeamMixin``), so a host that swaps the row shape gets the same\nenvelope around its own rows.",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Issue"
+            }
+          }
+        },
+        "required": [
+          "count",
+          "limit",
+          "offset",
+          "results"
+        ]
+      },
       "IssuePatchStatusEnum": {
         "enum": [
           "new",
@@ -697,7 +733,7 @@
       },
       "PatchedIssuePatch": {
         "type": "object",
-        "description": "``PATCH /issues/{id}`` — status and/or note.",
+        "description": "``PATCH /issues/{id}`` — status, note, and/or the mute deadline.\n\n``muted_until`` on its own is a mute: the field has no meaning in any other\nstatus, so a patch that carries only the deadline sets ``status=muted``\n(``null`` for a mute with no deadline). With any status other than\n``muted`` the deadline is ignored and cleared.",
         "properties": {
           "status": {
             "$ref": "#/components/schemas/IssuePatchStatusEnum"

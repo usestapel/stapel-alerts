@@ -160,6 +160,35 @@ def test_a_live_mute_survives_a_new_event():
     assert issue.count == 2
 
 
+
+@pytest.mark.parametrize("leave", [IssueStatus.NEW, IssueStatus.FIXED])
+def test_leaving_muted_clears_the_deadline(leave):
+    """A reopened or fixed issue that still carried its old `muted_until`
+    would read as muted to anything that checks the timestamp before the
+    status. The deadline belongs to the mute and leaves with it."""
+    _record(FK_VIOLATION_A)
+    issue = Issue.objects.get()
+    set_status(issue, IssueStatus.MUTED, muted_until=timezone.now() + timedelta(hours=1))
+
+    set_status(issue, leave)
+
+    issue.refresh_from_db()
+    assert issue.status == leave
+    assert issue.muted_until is None
+
+
+def test_a_fix_ends_the_mute():
+    _record(FK_VIOLATION_A)
+    issue = Issue.objects.get()
+    set_status(issue, IssueStatus.MUTED, muted_until=timezone.now() + timedelta(hours=1))
+
+    mark_fixed(issue, version="1.0.1")
+
+    issue.refresh_from_db()
+    assert issue.status == IssueStatus.FIXED
+    assert issue.muted_until is None
+
+
 # ── Events are capped; counters are not ─────────────────────────────────
 
 

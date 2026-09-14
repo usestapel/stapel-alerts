@@ -1,4 +1,4 @@
-# stapel-alerts 0.2.0
+# stapel-alerts 0.2.1
 
 An alert store for a fleet that has no Sentry, and the same capture() call whether one is connected or not. One row per BUG (fingerprint, status, count, first/last seen, the release that claimed the fix, whether it came back) rather than a search over log text — because the question a fix wave is reconciled against is 'which bugs are open, which are fixed, and which regressed', and that needs a status column. Every input is wired by installing the app: a WARNING+ log handler, the DRF 5xx hook, Celery task failures, core's DLQ parks, and the comm handler exceptions that are RETURNED rather than raised and which no except clause anywhere would otherwise see. Monoliths write in process; microservices POST with a per-service key, buffered and retried, and fall through to Telegram when the owner is unreachable — never over the bus, because the bus is the thing whose failures this records. A Prometheus blind-spot watchdog files the monitoring stack's own gaps as issues, on the principle that 'no alerts firing' is the observable state of both a healthy fleet and a blind one.
 

@@ -382,11 +382,12 @@ def mark_fixed(issue: Issue, *, version: str = "", sha: str = "") -> Issue:
     issue.fixed_in_sha = (sha or "")[:64]
     issue.fixed_at = timezone.now()
     issue.regressed_at = None
+    issue.muted_until = None
     issue.count_since_fix = 0
     issue.save(
         update_fields=[
             "status", "fixed_in_version", "fixed_in_sha",
-            "fixed_at", "regressed_at", "count_since_fix",
+            "fixed_at", "regressed_at", "muted_until", "count_since_fix",
         ]
     )
     from .metrics import refresh_open_gauges
@@ -401,12 +402,16 @@ def set_status(issue: Issue, status: str, *, note: str | None = None, muted_unti
     ``regressed`` is not one of them: it is the store's verdict on evidence,
     and a caller who could set it could also hide a regression by not setting
     it. The API layer refuses it before this is reached.
+
+    The deadline belongs to the mute and leaves with it: any transition out of
+    ``muted`` clears ``muted_until``, or a reopened issue would carry a stale
+    deadline that reads as "muted" to anything checking the timestamp before
+    the status.
     """
     issue.status = status
     if note is not None:
         issue.note = note
-    if status == IssueStatus.MUTED:
-        issue.muted_until = muted_until
+    issue.muted_until = muted_until if status == IssueStatus.MUTED else None
     issue.save(update_fields=["status", "note", "muted_until"])
     from .metrics import refresh_open_gauges
 

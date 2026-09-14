@@ -74,6 +74,26 @@ def test_the_schema_serves_the_canonical_prefix():
     assert "/alerts/api/v1/issues/{issue_id}/fix" in paths
 
 
+def test_the_operation_ids_the_pair_is_keyed_on_are_stable():
+    """@stapel/alerts-react generates its client from these ids; a renamed
+    operation is a renamed client function, which is a breaking change
+    whatever the version number says. Add here when adding an operation;
+    never rename without a minor bump."""
+    schema = json.loads((ROOT / "docs" / "schema.json").read_text())
+    ids = {
+        op["operationId"]
+        for methods in schema["paths"].values()
+        for op in methods.values()
+    }
+    assert ids == {
+        "alerts_api_v1_issues_list",
+        "alerts_api_v1_issues_retrieve",
+        "alerts_api_v1_issues_partial_update",
+        "alerts_api_v1_issues_fix_create",
+        "alerts_api_v1_report_create",
+    }
+
+
 def test_every_error_key_this_module_owns_is_in_the_catalog():
     from stapel_alerts.errors import STAPEL_ALERTS_ERRORS
 

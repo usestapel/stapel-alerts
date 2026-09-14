@@ -4,6 +4,54 @@ All notable changes to stapel-alerts are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0 semver: **minor = breaking**, patch = compatible.
 
+## [0.2.1] — 2026-09-14
+
+Four defects the frontend pair (`@stapel/alerts-react` 0.1.0) found while
+consuming `docs/schema.json`. No wire change; the contract now tells the truth
+about the wire, and a gate proves it does.
+
+### The schema said `Issue[]`; the wire carried a page
+
+`GET /issues` has always answered `{count, offset, limit, results}`. The schema
+declared `Issue[]`, because the view's `@extend_schema(responses=
+IssueSerializer(many=True))` was a hand-written claim the generator had no way
+to check against the method body — and the drift gate compared the committed
+schema with a fresh emission of the same claim, so it was green while both
+were wrong. The response is now a named `IssuePage` component, and the view
+renders its body THROUGH `IssuePageSerializer` and declares the same object,
+so the contract and the wire are one thing.
+
+The mechanism that catches the class: `tests/test_contract_wire.py` performs
+every operation the committed schema declares with a JSON response, on every
+interpreter, and validates the body it gets against the schema it was
+promised. An operation with a response body and no recipe fails loudly
+rather than being skipped. The operationIds the pair's client is keyed on
+(`alerts_api_v1_issues_list` / `_retrieve`) are pinned by a test; the list is
+named explicitly, because drf-spectacular derives `_list` only from a
+`many=True` response and a page envelope is one object.
+
+### `?limit=`
+
+The page size was a server constant. It is now an optional `limit` query
+parameter, `1..200`, default 50 (`views.PAGE_SIZE` / `views.MAX_PAGE_SIZE`).
+Out-of-range values are clamped and the envelope echoes the limit that was
+applied, so a clamp is never silent; garbage is the default.
+
+### A mute deadline alone is a mute
+
+`PATCH /issues/{id}` with only `muted_until` answered 200 and wrote nothing
+unless the patch also carried `status`. A 200 that changes nothing is a lie.
+`muted_until` has no meaning in any other status, so a patch carrying only
+the deadline now sets `status=muted` (`null` mutes with no deadline); with any
+status other than `muted` the deadline is ignored and cleared.
+
+### Leaving `muted` drops the deadline
+
+`set_status` never cleared `muted_until`, so an issue reopened or fixed after
+a mute kept a stale deadline that read as "muted" to anything checking the
+timestamp before the status. Every transition out of `muted` — `set_status`
+to `new`/`fixed`, and `mark_fixed` — now clears it.
+
 ## [0.2.0] — 2026-09-14
 
 The blind spot in the monitoring, the fact on the bus, and the six refusals

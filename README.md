@@ -24,7 +24,7 @@ pip install git+https://github.com/usestapel/stapel-alerts
 
 | Fact | Value |
 |---|---|
-| Version | `0.2.0` |
+| Version | `0.2.1` |
 | Python | `>=3.11` (3.11, 3.12, 3.13, 3.14) |
 | HTTP operations | 5 |
 | Config axes | 6 |
@@ -135,12 +135,18 @@ receives a new event. A caller who could assert it could also decline to.
 ## API
 
 ```
-GET    /alerts/api/v1/issues              ?status= &level= &service= &since= &open=
+GET    /alerts/api/v1/issues              ?status= &level= &service= &since= &open= &offset= &limit=
 GET    /alerts/api/v1/issues/{id}         + the last 20 events
 PATCH  /alerts/api/v1/issues/{id}         {status, note, muted_until}
 POST   /alerts/api/v1/issues/{id}/fix     {version, sha}
 POST   /alerts/api/v1/report              {events: [...]}   X-Service-Key
 ```
+
+The list is a page, `{count, offset, limit, results}` (`IssuePage` in the
+schema). `limit` is 1..200, default 50; an out-of-range value is clamped and
+the envelope echoes the limit that was applied. A `PATCH` carrying only
+`muted_until` is a mute (`null` = no deadline); leaving `muted` by any route
+clears the deadline.
 
 Staff session for the tracker, service key for `/report`, and **not the other
 way round**: a reporter's key lives in every container in the fleet, so the

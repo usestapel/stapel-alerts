@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from stapel_alerts.models import ErrorEvent, Issue, IssueStatus, Service
 from stapel_alerts.services import record
+from stapel_alerts.views import MAX_PAGE_SIZE, PAGE_SIZE
 
 from .traces import FK_VIOLATION_A, FK_VIOLATION_B, JWT_REFUSAL_A
 
@@ -138,6 +139,49 @@ def test_open_returns_new_and_regressed_only(staff_client):
     assert staff_client.get(f"{ISSUES}?open=1").json()["count"] == 1
 
 
+
+def test_the_list_is_a_page_envelope_with_a_default_limit(staff_client):
+    """The pair reads `{count, offset, limit, results}`; the envelope is the
+    wire, and the schema now says so (IssuePage)."""
+    _an_issue()
+
+    body = staff_client.get(ISSUES).json()
+
+    assert set(body) == {"count", "offset", "limit", "results"}
+    assert body["limit"] == PAGE_SIZE
+    assert body["offset"] == 0
+
+
+def test_a_caller_may_choose_the_page_size(staff_client):
+    for i in range(3):
+        _an_issue(f"Traceback (most recent call last):\n  File \"a.py\", line {i}\nBug{i}: x", service=f"svc-{i}")
+
+    body = staff_client.get(f"{ISSUES}?limit=2").json()
+
+    assert body["count"] == 3
+    assert body["limit"] == 2
+    assert len(body["results"]) == 2
+
+    second = staff_client.get(f"{ISSUES}?limit=2&offset=2").json()
+    assert second["offset"] == 2
+    assert len(second["results"]) == 1
+
+
+@pytest.mark.parametrize("raw,effective", [
+    ("100000", MAX_PAGE_SIZE),
+    ("0", 1),
+    ("-5", 1),
+    ("many", PAGE_SIZE),
+])
+def test_the_page_size_has_a_ceiling_and_the_envelope_echoes_what_was_applied(
+    staff_client, raw, effective
+):
+    """A clamped limit is not a lie because the envelope says what was used."""
+    _an_issue()
+
+    assert staff_client.get(f"{ISSUES}?limit={raw}").json()["limit"] == effective
+
+
 def test_a_repeat_poll_gets_a_304(staff_client):
     _an_issue()
     first = staff_client.get(ISSUES)
@@ -186,6 +230,36 @@ def test_a_status_and_a_note_can_be_set(staff_client):
     issue.refresh_from_db()
     assert issue.status == IssueStatus.MUTED
     assert issue.note == "known, waiting on upstream"
+
+
+
+def test_a_mute_deadline_alone_mutes_the_issue(staff_client):
+    """`muted_until` has no meaning in any other status, so a patch that
+    carries only the deadline IS a mute. 0.2.0 answered 200 and wrote
+    nothing — a 200 that changes nothing is a lie."""
+    issue = _an_issue()
+    until = timezone.now() + timezone.timedelta(hours=2)
+
+    response = staff_client.patch(
+        f"{ISSUES}/{issue.id}", {"muted_until": until.isoformat()}, format="json"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "muted"
+    issue.refresh_from_db()
+    assert issue.status == IssueStatus.MUTED
+    assert issue.muted_until == until
+
+
+def test_reopening_a_muted_issue_drops_the_deadline(staff_client):
+    issue = _an_issue()
+    until = timezone.now() + timezone.timedelta(hours=2)
+    staff_client.patch(f"{ISSUES}/{issue.id}", {"muted_until": until.isoformat()}, format="json")
+
+    body = staff_client.patch(f"{ISSUES}/{issue.id}", {"status": "new"}, format="json").json()
+
+    assert body["status"] == "new"
+    assert body["muted_until"] is None
 
 
 def test_regressed_cannot_be_asserted_by_a_caller(staff_client):

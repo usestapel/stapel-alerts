@@ -40,13 +40,14 @@ from .errors import (
     ERR_403_SERVICE_KEY_INVALID,
     ERR_404_ISSUE_NOT_FOUND,
 )
-from .models import ErrorEvent, Issue, Service
+from .models import ErrorEvent, Issue, IssueStatus, Service
 from .serializers import (
     MAX_BATCH,
     SETTABLE_STATUSES,
     ErrorEventSerializer,
     IssueDetailSerializer,
     IssueFixSerializer,
+    IssuePageSerializer,
     IssuePatchSerializer,
     IssueSerializer,
     ReportSerializer,
@@ -58,9 +59,12 @@ from .transport import SERVICE_KEY_HEADER
 #: whole history: the history is what `count` is for.
 DETAIL_EVENTS = 20
 
-#: Page size for the issue list. Fixed rather than client-chosen — the list is
-#: a triage surface, and an agent that needs everything pages.
+#: Default page size for the issue list, and the ceiling ``?limit=`` may raise
+#: it to. A ceiling rather than "any": the list is a triage surface, and an
+#: agent that needs everything pages. Out-of-range values are clamped and the
+#: envelope echoes the limit that was applied, so a clamp is never silent.
 PAGE_SIZE = 50
+MAX_PAGE_SIZE = 200
 
 
 class SerializerSeamMixin:
@@ -75,6 +79,18 @@ class SerializerSeamMixin:
 
     def get_response_serializer_class(self):
         return self.response_serializer_class
+
+
+def _bounded_int(raw, *, default: int, floor: int, ceiling: int | None = None) -> int:
+    """A query integer clamped into ``[floor, ceiling]``; garbage is the default."""
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    value = max(floor, value)
+    if ceiling is not None:
+        value = min(ceiling, value)
+    return value
 
 
 def _etag(payload) -> str:
@@ -108,17 +124,31 @@ class IssueListView(_AlertsView):
 
     permission_classes = [IsStaffUser]
     response_serializer_class = IssueSerializer
+    #: The envelope. Declared as the response AND used to render it, so the
+    #: contract and the wire are one object (see IssuePageSerializer).
+    page_serializer_class = IssuePageSerializer
 
     @extend_schema(
+        # drf-spectacular names a GET `_list` only when the response is a
+        # `many=True` serializer, and a page envelope is one object. Naming it
+        # explicitly keeps the id the pair's generated client is keyed on
+        # (`alerts_api_v1_issues_list`) and leaves `_retrieve` to the detail.
+        operation_id="alerts_api_v1_issues_list",
         parameters=[
             OpenApiParameter("status", str, description="new|fixed|regressed|muted"),
             OpenApiParameter("level", str, description="debug|info|warning|error|fatal"),
             OpenApiParameter("service", str),
             OpenApiParameter("since", str, description="ISO-8601; last_seen >= since"),
             OpenApiParameter("open", bool, description="Only new + regressed"),
-            OpenApiParameter("offset", int),
+            OpenApiParameter("offset", int, description="Rows to skip; default 0"),
+            OpenApiParameter(
+                "limit", int,
+                description=f"Page size, 1..{MAX_PAGE_SIZE}; default {PAGE_SIZE}. "
+                "Out-of-range values are clamped and the envelope echoes the "
+                "limit that was applied.",
+            ),
         ],
-        responses=IssueSerializer(many=True),
+        responses=IssuePageSerializer,
     )
     def get(self, request):
         qs = Issue.objects.all()
@@ -141,20 +171,17 @@ class IssueListView(_AlertsView):
                 qs = qs.filter(last_seen__gte=parsed)
 
         total = qs.count()
-        try:
-            offset = max(0, int(params.get("offset", 0)))
-        except (TypeError, ValueError):
-            offset = 0
-        rows = qs.order_by("-last_seen")[offset:offset + PAGE_SIZE]
+        offset = _bounded_int(params.get("offset", 0), default=0, floor=0)
+        limit = _bounded_int(
+            params.get("limit", PAGE_SIZE), default=PAGE_SIZE, floor=1, ceiling=MAX_PAGE_SIZE
+        )
+        rows = qs.order_by("-last_seen")[offset:offset + limit]
 
-        serializer_class = self.get_response_serializer_class() or IssueSerializer
-        payload = {
-            "count": total,
-            "offset": offset,
-            "limit": PAGE_SIZE,
-            "results": serializer_class(rows, many=True).data,
-        }
-        return _conditional(request, payload)
+        page = self.page_serializer_class(
+            {"count": total, "offset": offset, "limit": limit, "results": rows},
+            row_serializer_class=self.get_response_serializer_class() or IssueSerializer,
+        )
+        return _conditional(request, page.data)
 
 
 class IssueDetailView(_AlertsView):
@@ -195,6 +222,10 @@ class IssueDetailView(_AlertsView):
         data = serializer.validated_data
 
         new_status = data.get("status")
+        if new_status is None and "muted_until" in data:
+            # A deadline alone is a mute: the field means nothing in any other
+            # status, and 0.2.0's 200-that-wrote-nothing was a lie.
+            new_status = IssueStatus.MUTED
         if new_status is not None and new_status not in [s.value for s in SETTABLE_STATUSES]:
             return StapelErrorResponse(
                 400, ERR_400_STATUS_NOT_SETTABLE, {"status": new_status}
@@ -341,4 +372,5 @@ __all__ = [
     "SerializerSeamMixin",
     "DETAIL_EVENTS",
     "PAGE_SIZE",
+    "MAX_PAGE_SIZE",
 ]

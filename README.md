@@ -24,13 +24,13 @@ pip install git+https://github.com/usestapel/stapel-alerts
 
 | Fact | Value |
 |---|---|
-| Version | `0.2.1` |
+| Version | `0.2.2` |
 | Python | `>=3.11` (3.11, 3.12, 3.13, 3.14) |
 | HTTP operations | 5 |
 | Config axes | 6 |
 | Usage surface | 18 |
 | Extension points | 7 |
-| Error codes | 48 |
+| Error codes | 49 |
 | Fleet dependencies | [`celery`](https://github.com/usestapel/celery) (optional) · [`sentry-sdk`](https://github.com/usestapel/sentry-sdk) (optional) · [`stapel-core`](https://github.com/usestapel/stapel-core) · [`stapel-notifications`](https://github.com/usestapel/stapel-notifications) (optional) |
 
 ## Documentation

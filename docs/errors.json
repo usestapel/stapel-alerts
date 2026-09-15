@@ -358,6 +358,16 @@
     "owner": "stapel_core"
   },
   {
+    "code": "error.422.alerts_report_not_storable",
+    "status": 422,
+    "params": [
+      "events"
+    ],
+    "remediation": "wait_and_retry",
+    "en": "{events} event(s) in this report could not be stored and were dropped",
+    "owner": "stapel_alerts"
+  },
+  {
     "code": "error.422.unprocessable_entity",
     "status": 422,
     "params": [],

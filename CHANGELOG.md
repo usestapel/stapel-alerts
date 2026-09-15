@@ -4,6 +4,86 @@ All notable changes to stapel-alerts are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0 semver: **minor = breaking**, patch = compatible.
 
+## [0.2.2] — 2026-09-15
+
+Four defects, all found within the first hour of the first real mount — an
+eight-service fleet on a client fleet. Every one of them is the same shape:
+the library worked, and what it produced was not usable.
+
+### `POST /report` answered 500 on a long title
+
+A title longer than 255 characters reached a `varchar(255)`. Postgres does not
+truncate, it raises `StringDataRightTruncation`, the ingest's transaction rolled
+back, and the endpoint answered 500 — eight times in twenty minutes. That is
+the worst available failure for this library: the report that was lost was a
+report ABOUT a defect, and the 500 made the alert store the loudest error on
+the host, with every other service a retrying, logging client complaining
+about it.
+
+Fixed structurally rather than on the field that blew up. `stapel_alerts.bounds`
+reads each limit off the model field itself — typing the numbers a second time
+would make a future `max_length` change a silent data-loss bug — and `record`
+fits every value from a payload before it reaches a column. Cuts are MARKED
+with an ellipsis, because a silent truncation is a lie about the data. A
+`choices` field (`level`, `kind`) falls back to its default instead of being
+cut into nonsense: `"screaming"[:16]` is not a level.
+
+The ordering matters and is the subtle half: `service` and `exception_class`
+are fitted BEFORE the fingerprint is taken, so the hash is computed over
+exactly the values that will be stored. Truncation is deterministic, so two
+identical errors still truncate identically and still group — the property the
+whole arrangement exists to protect. The fingerprint itself is never fitted.
+
+And the endpoint no longer 500s on anything: a report it cannot store answers
+422 `error.422.alerts_report_not_storable` and is logged locally.
+
+### The channel was a mirror of the store, not an escalation of it
+
+Every first-seen issue was announced, warnings included — so the channel
+duplicated the thing it exists to escalate, and a channel that repeats the
+store is one people mute. Owner's ruling: Telegram carries only what should
+wake a person. `NOTIFY_MIN_LEVEL` (default `error`) is a floor on every
+reason, not just on new issues — a warning that regressed is still a warning —
+and the three thresholds (`NOTIFY_ON_NEW`, `NOTIFY_ON_REGRESSION`,
+`NOTIFY_ON_SPIKE`) are configuration rather than constants.
+
+### The noise it did announce was not ours
+
+Four issues in the first hour, and four of them were Django's own
+permission/ContentType bootstrap chatter and an internet scanner's
+`Invalid HTTP_HOST header`. `stapel_alerts.ignore` ships a default set for
+both, extended (never replaced) by `IGNORE_PATTERNS` and
+`IGNORE_EXCEPTION_CLASSES`, and applied at BOTH ends: in `capture` so a
+reporter never spends an HTTP request on it, and in `record` so the store
+drops it at the door even from a reporter that has not been redeployed.
+
+### Grouping failed on the shape it exists for
+
+Three permission warnings differing by one word — `add_` / `change_` /
+`view_` inside an identical template — became three issues. The normaliser
+absorbed varying NUMBERS and not varying WORDS; that was the known limit when
+0.2 shipped and this was it biting.
+
+Now a mapping literal printed into a message has its VALUES replaced and its
+KEYS kept, so `{'app_label': …}` and `{'user_id': …}` stay different payloads.
+Deliberately scoped to braces and nothing else: the first version of this rule
+was global, and it folded two different unique-constraint violations into one
+issue — same frames, same class, two different bugs, one hidden behind the
+other's "fixed". That is `test_a_different_constraint_is_a_different_issue`,
+the case the README leads with, and the suite caught it. A quoted identifier
+standing alone in a message is usually what TELLS two bugs apart; inside a
+printed dict it is usually what varies between two occurrences of one.
+
+### The Telegram digest went to General instead of the topic
+
+A forum group routes a message into a topic only when the send carries
+`message_thread_id`. The sender did not, so every digest landed in the group's
+General tab while the deployment's Grafana contact point — which does send the
+parameter — had been posting into the topic all along. The chat id was never
+wrong. `FALLBACK["TELEGRAM_THREAD_ID"]` is now read and passed through, as an
+integer, and offered to stapel-notifications' channel when its signature
+accepts one (feature-detected, so an older channel keeps working).
+
 ## [0.2.1] — 2026-09-14
 
 Four defects the frontend pair (`@stapel/alerts-react` 0.1.0) found while

@@ -240,7 +240,7 @@ def test_telegram_goes_through_the_notifications_channel_when_it_is_configured(
     }
     sent = []
     monkeypatch.setattr(
-        fallback, "_via_notifications", lambda chat_id, text: sent.append((chat_id, text)) or True
+        fallback, "_via_notifications", lambda chat_id, text, thread_id="": sent.append((chat_id, text)) or True
     )
 
     assert fallback.send_telegram("subject", "body") is True
@@ -254,7 +254,7 @@ def test_the_direct_bot_api_is_used_when_notifications_cannot_send(settings, mon
         "SERVICE": "s",
         "FALLBACK": {"TELEGRAM_BOT_TOKEN": "123:abc", "TELEGRAM_CHAT_ID": "-100123"},
     }
-    monkeypatch.setattr(fallback, "_via_notifications", lambda chat_id, text: False)
+    monkeypatch.setattr(fallback, "_via_notifications", lambda chat_id, text, thread_id="": False)
     seen = {}
 
     class _Response:
@@ -282,7 +282,7 @@ def test_an_unconfigured_fallback_says_so_instead_of_pretending(settings, monkey
     from stapel_alerts import fallback
 
     settings.STAPEL_ALERTS = {"SERVICE": "s", "FALLBACK": {}}
-    monkeypatch.setattr(fallback, "_via_notifications", lambda chat_id, text: False)
+    monkeypatch.setattr(fallback, "_via_notifications", lambda chat_id, text, thread_id="": False)
 
     assert fallback.send_telegram("subject", "body") is False
 
@@ -317,7 +317,7 @@ def test_a_long_digest_is_truncated_to_what_telegram_accepts(settings, monkeypat
     settings.STAPEL_ALERTS = {"SERVICE": "s", "FALLBACK": {"TELEGRAM_CHAT_ID": "1"}}
     sent = []
     monkeypatch.setattr(
-        fallback, "_via_notifications", lambda chat_id, text: sent.append(text) or True
+        fallback, "_via_notifications", lambda chat_id, text, thread_id="": sent.append(text) or True
     )
 
     fallback.send_telegram("s", "x" * 10000)

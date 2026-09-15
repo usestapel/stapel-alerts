@@ -4,5 +4,6 @@
   "error.400.alerts_status_not_settable": "El estado {status} lo establece el almacén a partir de las pruebas y no se puede asignar",
   "error.401.alerts_service_key_required": "Se requiere una clave de servicio o una sesión de personal",
   "error.403.alerts_service_key_invalid": "Esta clave de servicio no es válida",
-  "error.404.alerts_issue_not_found": "Incidencia no encontrada"
+  "error.404.alerts_issue_not_found": "Incidencia no encontrada",
+  "error.422.alerts_report_not_storable": "No se pudieron almacenar {events} evento(s) de este informe y se descartaron"
 }

@@ -1,8 +1,8 @@
-# stapel-alerts 0.2.1
+# stapel-alerts 0.2.2
 
 An alert store for a fleet that has no Sentry, and the same capture() call whether one is connected or not. One row per BUG (fingerprint, status, count, first/last seen, the release that claimed the fix, whether it came back) rather than a search over log text — because the question a fix wave is reconciled against is 'which bugs are open, which are fixed, and which regressed', and that needs a status column. Every input is wired by installing the app: a WARNING+ log handler, the DRF 5xx hook, Celery task failures, core's DLQ parks, and the comm handler exceptions that are RETURNED rather than raised and which no except clause anywhere would otherwise see. Monoliths write in process; microservices POST with a per-service key, buffered and retried, and fall through to Telegram when the owner is unreachable — never over the bus, because the bus is the thing whose failures this records. A Prometheus blind-spot watchdog files the monitoring stack's own gaps as issues, on the principle that 'no alerts firing' is the observable state of both a healthy fleet and a blind one.
 
-Contract: axes 6 · surface 18 · extension points 7 · operations 5 · error codes 48.
+Contract: axes 6 · surface 18 · extension points 7 · operations 5 · error codes 49.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -93,7 +93,7 @@ Paths are relative to `/alerts/api/v1/`.
 - GET /issues/{issue_id} — alerts_api_v1_issues_retrieve
 - POST /report — alerts_api_v1_report_create
 
-## Error codes (48) — the StapelError envelope
+## Error codes (49) — the StapelError envelope
 Render `t(code, params)`; branch UX on the remediation. Localized text lives in docs/errors.<lang>.md, not here.
 - error.400.alerts_batch_too_large [400] fix_input {max}
 - error.400.alerts_invalid_report [400] fix_input
@@ -136,6 +136,7 @@ Render `t(code, params)`; branch UX on the remediation. Localized text lives in 
 - error.410.gone [410] retry
 - error.413.payload_too_large [413] retry
 - error.415.unsupported_media_type [415] retry
+- error.422.alerts_report_not_storable [422] wait_and_retry {events}
 - error.422.unprocessable_entity [422] wait_and_retry
 - error.423.locked [423] wait_and_retry
 - error.423.verification_locked [423] wait_and_retry

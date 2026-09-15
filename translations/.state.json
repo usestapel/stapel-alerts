@@ -23,6 +23,10 @@
     "error.404.alerts_issue_not_found": {
       "hash": "7a900c4eaca2dba6",
       "origin": "llm"
+    },
+    "error.422.alerts_report_not_storable": {
+      "hash": "8454db51c895ec15",
+      "origin": "imported"
     }
   },
   "errors.ru": {
@@ -49,6 +53,10 @@
     "error.404.alerts_issue_not_found": {
       "hash": "7a900c4eaca2dba6",
       "origin": "llm"
+    },
+    "error.422.alerts_report_not_storable": {
+      "hash": "8454db51c895ec15",
+      "origin": "imported"
     }
   }
 }

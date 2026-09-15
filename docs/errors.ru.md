@@ -1,6 +1,6 @@
 # Errors — Русский
 
-`48` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
+`49` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.ru.json`.
 
 | Код | Статус | Параметры | Действие | Текст |
 |---|---|---|---|---|
@@ -45,6 +45,7 @@
 | `error.410.gone` | 410 | — | `retry` | Ресурс был безвозвратно удалён |
 | `error.413.payload_too_large` | 413 | — | `retry` | Тело запроса слишком большое |
 | `error.415.unsupported_media_type` | 415 | — | `retry` | Неподдерживаемый тип данных |
+| `error.422.alerts_report_not_storable` | 422 | `events` | `wait_and_retry` | Не удалось сохранить {events} событ. из этого отчёта — они отброшены |
 | `error.422.unprocessable_entity` | 422 | — | `wait_and_retry` | Невозможно обработать данные запроса |
 | `error.423.locked` | 423 | — | `wait_and_retry` | Ресурс заблокирован |
 | `error.423.verification_locked` | 423 | — | `wait_and_retry` | Слишком много неудачных попыток — подтверждение заблокировано |

@@ -30,6 +30,7 @@ import time
 import traceback
 
 from . import normalise as norm
+from .ignore import is_ignored
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,16 @@ def _capture(
         else:
             trace = ""
             exc_class = ""
+
+    # The source. Filtering here is what keeps a port scan or a migration's
+    # permission chatter from costing an HTTP request per occurrence — the
+    # store filters too (services.record), but only this end saves the call.
+    # The logger name is folded in so a host can silence a noisy logger with
+    # the same setting.
+    if is_ignored(
+        message, exc_class=exc_class, logger_name=str((context or {}).get("logger", ""))
+    ):
+        return False
 
     service = service or alerts_settings.SERVICE or "unknown"
     fingerprint = norm.fingerprint(

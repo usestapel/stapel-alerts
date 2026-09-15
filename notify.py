@@ -33,6 +33,8 @@ def notify_issue(issue, event, *, created: bool, regressed: bool) -> str:
     reason = _reason(issue, created=created, regressed=regressed)
     if not reason:
         return ""
+    if not _worth_waking_somebody(issue):
+        return ""
     if issue.is_muted_now():
         return ""
     if _in_quiet_hours() and issue.level != "fatal":
@@ -57,12 +59,59 @@ def notify_issue(issue, event, *, created: bool, regressed: bool) -> str:
     return reason
 
 
+#: Severity order, so a configured floor can be compared against a level.
+#: Local to this module rather than imported from ``services`` because this is
+#: the notification policy's own ordering, and the two happening to agree today
+#: is not a reason for one to break when the other changes.
+_LEVEL_ORDER = ("debug", "info", "warning", "error", "fatal")
+
+
+def _worth_waking_somebody(issue) -> bool:
+    """Is this issue above the escalation floor?
+
+    Owner's ruling, 2026-09-15, after watching the first hour of the tracker in
+    the channel: **the notification channel is not a mirror of the store.**
+    Announcing every first-seen issue, warnings included, makes the channel a
+    duplicate of the thing it exists to escalate — and a channel that repeats
+    the store is one people mute, which is how the `fatal` that mattered
+    arrives in a muted channel.
+
+    So the store keeps everything and the channel carries only what should
+    wake a person. The floor is ``NOTIFY_MIN_LEVEL`` (``"error"`` by default)
+    and it applies to EVERY reason, not just to a new issue: a warning that
+    regressed is still a warning, and "warnings never go to Telegram" is the
+    rule as it was given. A deployment that wants its warnings paged sets the
+    floor to ``"warning"``; one that wants only outages sets ``"fatal"``.
+    """
+    from .conf import alerts_settings
+
+    floor = str(alerts_settings.NOTIFY_MIN_LEVEL or "error").lower()
+    try:
+        return _LEVEL_ORDER.index(str(issue.level)) >= _LEVEL_ORDER.index(floor)
+    except ValueError:
+        # An unknown level on either side: escalate rather than swallow. A
+        # misconfigured floor must not be a silent "notify nobody".
+        logger.warning(
+            "alerts: NOTIFY_MIN_LEVEL=%r or issue level %r is not one of %s; "
+            "notifying anyway.", floor, issue.level, _LEVEL_ORDER,
+        )
+        return True
+
+
 def _reason(issue, *, created: bool, regressed: bool) -> str:
-    if regressed:
+    """Which of the three thresholds fired, if any — each one switchable.
+
+    The three are configuration rather than constants because a deployment
+    that pages on regressions but triages new issues in the store is a
+    legitimate posture, and so is the reverse.
+    """
+    from .conf import alerts_settings
+
+    if regressed and alerts_settings.NOTIFY_ON_REGRESSION:
         return "regressed"
-    if created:
+    if created and alerts_settings.NOTIFY_ON_NEW:
         return "new issue"
-    if is_spiking(issue):
+    if alerts_settings.NOTIFY_ON_SPIKE and is_spiking(issue):
         return "count spike"
     return ""
 

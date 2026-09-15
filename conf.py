@@ -65,6 +65,18 @@ DEFAULTS = {
     # Capture bus DLQ parks and task-ledger unprocessable records. These are
     # the "work dropped on the floor" class and are alerts by construction.
     "CAPTURE_DLQ": True,
+    # Extra message patterns (regular expressions, matched with `search`) that
+    # never become an issue. ADDED to the shipped defaults in
+    # stapel_alerts.ignore.DEFAULT_IGNORE_PATTERNS, never replacing them: a
+    # host silencing one logger of its own must not have to restate the
+    # framework chatter to keep it silenced. Applied at BOTH ends — in
+    # capture() so a reporter never sends it, and in record() so the store
+    # drops it at the door even from a reporter that has not been redeployed.
+    "IGNORE_PATTERNS": [],
+    # Exception class names that are an edge fact rather than a defect, added
+    # to DEFAULT_IGNORE_EXCEPTION_CLASSES the same way. Compared on the bare
+    # class name, so a dotted path and a bare name are the same answer.
+    "IGNORE_EXCEPTION_CLASSES": [],
 
     # ── Store ─────────────────────────────────────────────────────────
     # Events kept per issue. Older ones are swept; the issue's counters are
@@ -93,6 +105,20 @@ DEFAULTS = {
     # The notifications type name used for alert mail/chat. Merged into that
     # module's TYPES registry by the host; the module only names it.
     "NOTIFY_TYPE": "alerts.issue",
+    # ── What the channel carries, as opposed to what the store keeps ──
+    # The notification channel is an ESCALATION path, not a mirror of the
+    # store (owner's ruling 2026-09-15). The floor applies to every reason
+    # below, so at the default a warning never reaches Telegram however new or
+    # regressed it is: warnings live in the store and are read there. Set to
+    # "warning" to page on them, "fatal" to page only on an outage.
+    "NOTIFY_MIN_LEVEL": "error",
+    # The three thresholds, each switchable. Paging on regressions while
+    # triaging new issues in the store is a legitimate posture; so is the
+    # reverse. Nothing else notifies — a repeat occurrence of a known issue
+    # reaches nobody, by design.
+    "NOTIFY_ON_NEW": True,
+    "NOTIFY_ON_REGRESSION": True,
+    "NOTIFY_ON_SPIKE": True,
     # A count spike: an issue whose occurrences in the last hour exceed this
     # multiple of the previous hour re-notifies.
     "SPIKE_FACTOR": 5,
@@ -109,9 +135,15 @@ DEFAULTS = {
     # dotted path to `notify(subject, body) -> bool`, or the shipped
     # "telegram" name, which reads FALLBACK below.
     "NOTIFY": "telegram",
-    # {"TELEGRAM_BOT_TOKEN": "...", "TELEGRAM_CHAT_ID": "..."}. Used by the
-    # shipped telegram fallback when stapel-notifications is not installed or
-    # its TELEGRAM_PROVIDER is unconfigured.
+    # {"TELEGRAM_BOT_TOKEN": ..., "TELEGRAM_CHAT_ID": ..., "TELEGRAM_THREAD_ID": ...}
+    # Used by the shipped telegram fallback when stapel-notifications is not
+    # installed or its TELEGRAM_PROVIDER is unconfigured.
+    #
+    # TELEGRAM_THREAD_ID is optional and is the id of a TOPIC in a forum
+    # group. It is not cosmetic: Telegram routes a message into a topic only
+    # when the send carries `message_thread_id`, and without it the API
+    # answers 200 and posts to General. A destination that is configured and
+    # silently ignored is a send that succeeded and went to the wrong place.
     "FALLBACK": {},
     # How long the owner must be unreachable before the buffer is digested to
     # the fallback channel.

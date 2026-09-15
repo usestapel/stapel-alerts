@@ -103,6 +103,67 @@ HEX_PLACEHOLDER = "<hex>"
 INT_PLACEHOLDER = "<int>"
 TIMESTAMP_PLACEHOLDER = "<ts>"
 ADDRESS_PLACEHOLDER = "<addr>"
+STR_PLACEHOLDER = "<str>"
+
+# ── The unstable islands that are WORDS, not numbers ────────────────────
+#
+# Until 0.2.2 every rule above absorbed a varying NUMBER. That was the known
+# limit when 0.2 shipped and this is it biting, measured on a real fleet
+# (a client fleet, 2026-09-15): Django's permission bootstrap logs
+#
+#   Could not add permission {'app_label': 'cdn', 'model': 'asset',
+#   'codename': 'view_asset'}: ContentType matching query does not exist.
+#
+# three times, differing by one word — `add_` / `change_` / `view_` — inside
+# an otherwise identical template. Three issues for one bug is exactly the
+# failure grouping exists to prevent, and it is the SHAPE that is stable here,
+# not the tokens: a message that prints a payload prints a different payload
+# every time, and the template around it is the bug.
+#
+# So a quoted literal is an island too. Two rules, and the split between them
+# is what keeps this from over-merging:
+#
+# The rule is deliberately scoped to MAPPING PAYLOADS and nothing else, and
+# the scope is the whole of its safety. Only the VALUE side of `'key': 'value'`
+# is replaced: the keys are the payload's SHAPE, so `{'app_label': …}` and
+# `{'user_id': …}` stay different issues.
+#
+# A quoted token OUTSIDE a payload is left alone, and that is not an oversight
+# — it is this module's oldest invariant, and the first version of this rule
+# broke it. A global quoted-literal substitution folded
+#
+#   duplicate key value violates unique constraint "..._fk_users_id"
+#   duplicate key value violates unique constraint "..._workspaces_id"
+#
+# into one issue: same frames, same class, two different constraints, two
+# different bugs, one of which would then be hidden behind the other's "fixed".
+# That case is `test_a_different_constraint_is_a_different_issue`, it is the
+# example the README leads with, and it caught this in the suite. A quoted
+# identifier standing on its own in a message is usually the thing that TELLS
+# TWO BUGS APART; inside a printed dict it is usually the thing that varies
+# between two occurrences of one. Same token, opposite meaning, and the
+# brace is what distinguishes them.
+#
+#: A brace-delimited payload printed into a message. Non-nested on purpose:
+#: `[^{}]*` cannot run past the closing brace into the next payload.
+_MAPPING_LITERAL = re.compile(r"\{[^{}]*\}")
+#: `'key': 'value'` inside one of those. Only the value is eaten.
+_MAPPING_PAIR = re.compile(
+    r"(?P<key>(?P<kq>['\"])[A-Za-z_][\w.\-]*(?P=kq))\s*:\s*"
+    r"(?P<vq>['\"])[^'\"]*(?P=vq)"
+)
+def _normalise_payloads(line: str) -> str:
+    """Inside a mapping literal, replace each value; leave the rest of the line.
+
+    Text outside the braces is returned untouched — see the note above: a
+    quoted identifier there is evidence, not noise.
+    """
+    return _MAPPING_LITERAL.sub(
+        lambda payload: _MAPPING_PAIR.sub(
+            lambda pair: f"{pair.group('key')}: {STR_PLACEHOLDER}", payload.group(0)
+        ),
+        line,
+    )
 
 
 def normalise_line(line: str) -> str:
@@ -113,6 +174,9 @@ def normalise_line(line: str) -> str:
     line = _UUID_HEX.sub(UUID_PLACEHOLDER, line)
     line = _HEX.sub(HEX_PLACEHOLDER, line)
     line = _INT.sub(INT_PLACEHOLDER, line)
+    # Words last: the numeric rules above must see real digits, not a token
+    # that has already been swallowed by a quoted-literal replacement.
+    line = _normalise_payloads(line)
     return line.strip()
 
 

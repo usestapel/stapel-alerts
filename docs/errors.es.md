@@ -1,6 +1,6 @@
 # Errors — Español
 
-`48` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.es.json`.
+`49` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.es.json`.
 
 | Código | Estado | Parámetros | Acción | Texto |
 |---|---|---|---|---|
@@ -45,6 +45,7 @@
 | `error.410.gone` | 410 | — | `retry` | El recurso se ha eliminado permanentemente |
 | `error.413.payload_too_large` | 413 | — | `retry` | El cuerpo de la solicitud es demasiado grande |
 | `error.415.unsupported_media_type` | 415 | — | `retry` | Tipo de contenido no compatible |
+| `error.422.alerts_report_not_storable` | 422 | `events` | `wait_and_retry` | No se pudieron almacenar {events} evento(s) de este informe y se descartaron |
 | `error.422.unprocessable_entity` | 422 | — | `wait_and_retry` | Entidad no procesable |
 | `error.423.locked` | 423 | — | `wait_and_retry` | El recurso está bloqueado |
 | `error.423.verification_locked` | 423 | — | `wait_and_retry` | Demasiados intentos fallidos — verificación bloqueada |

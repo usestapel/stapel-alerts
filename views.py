@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 
 from django.http import Http404
 from django.utils.dateparse import parse_datetime
@@ -39,6 +40,7 @@ from .errors import (
     ERR_401_SERVICE_KEY_REQUIRED,
     ERR_403_SERVICE_KEY_INVALID,
     ERR_404_ISSUE_NOT_FOUND,
+    ERR_422_REPORT_NOT_STORABLE,
 )
 from .models import ErrorEvent, Issue, IssueStatus, Service
 from .serializers import (
@@ -54,6 +56,11 @@ from .serializers import (
 )
 from .services import mark_fixed, record, set_status
 from .transport import SERVICE_KEY_HEADER
+
+#: This module's own logger. A report that cannot be stored is logged HERE
+#: rather than captured, because capturing it would be the store reporting its
+#: own ingest failure through its own ingest.
+logger = logging.getLogger(__name__)
 
 #: Events returned inline with an issue detail. A page of the last N, not the
 #: whole history: the history is what `count` is for.
@@ -314,6 +321,8 @@ class ReportView(_AlertsView):
             )
 
         accepted = 0
+        ignored = 0
+        unstorable = 0
         for item in serializer.validated_data["events"]:
             payload = dict(item)
             # The key names the service. A reporter that claims to be another
@@ -321,15 +330,44 @@ class ReportView(_AlertsView):
             # the body is a claim.
             if service is not None:
                 payload["service"] = service.name
-            record(**_record_kwargs(payload))
-            accepted += 1
+            # A report that cannot be stored must never become a 500. This
+            # endpoint's clients are every other service in the fleet, and a
+            # 500 here turns each of them into a retrying, logging, noisy
+            # client — about the alert store, which is the one component whose
+            # own noise nothing is left to record. `record` bounds every field
+            # it writes (stapel_alerts.bounds), so reaching this branch means
+            # something the ingest did not anticipate; it is logged LOCALLY,
+            # on this module's own logger, which the capture handler excludes.
+            try:
+                if record(**_record_kwargs(payload)) is None:
+                    ignored += 1
+                else:
+                    accepted += 1
+            except Exception:
+                unstorable += 1
+                logger.error(
+                    "alerts: refusing a report event that could not be stored "
+                    "(service=%r, level=%r)",
+                    payload.get("service"), payload.get("level"), exc_info=True,
+                )
+
+        if unstorable and not accepted:
+            # Nothing in the batch survived: the reporter is sending something
+            # this store cannot hold and should be told so, in a shape it can
+            # act on, rather than being handed a 500 to retry for ever.
+            return StapelErrorResponse(
+                422, ERR_422_REPORT_NOT_STORABLE, {"events": unstorable}
+            )
 
         if service is not None:
             from django.utils import timezone
 
             Service.objects.filter(pk=service.pk).update(last_report_at=timezone.now())
 
-        return Response({"accepted": accepted}, status=http_status.HTTP_202_ACCEPTED)
+        return Response(
+            {"accepted": accepted, "ignored": ignored, "unstorable": unstorable},
+            status=http_status.HTTP_202_ACCEPTED,
+        )
 
     def _authenticate(self, request):
         """A valid service key, a staff session, or an error response."""

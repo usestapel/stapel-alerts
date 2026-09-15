@@ -25,7 +25,9 @@ import logging
 from django.db import transaction
 from django.utils import timezone
 
+from . import bounds
 from . import normalise as norm
+from .ignore import is_ignored
 from .models import ErrorEvent, EventKind, Issue, IssueStatus, Level
 
 logger = logging.getLogger(__name__)
@@ -145,8 +147,13 @@ def record(
     occurrences: int = 1,
     occurred_at=None,
     exc_class: str = "",
-) -> ErrorEvent:
-    """Store one occurrence. Returns the written :class:`ErrorEvent`.
+) -> ErrorEvent | None:
+    """Store one occurrence. Returns the written :class:`ErrorEvent`, or ``None``.
+
+    ``None`` means the occurrence matched the ignore set (:mod:`stapel_alerts.ignore`)
+    and was deliberately not stored. It is not an error and callers must not
+    treat it as one: a report carrying only ignored events is a report that
+    was understood and accepted.
 
     Creates or updates the :class:`Issue` it belongs to as a side effect —
     which is the whole point: the tracker is maintained BY the ingest, never
@@ -158,6 +165,32 @@ def record(
     occurred_at = occurred_at or now
     trace = (trace or "")[:MAX_TRACE]
     exc_class = exc_class or norm.exception_class(trace)
+
+    # The door. A reporter running an older release still sends the fleet's
+    # framework chatter and the internet's port scans, so the store drops them
+    # here as well as at the source — the one filter that does not depend on
+    # every container having been redeployed.
+    if is_ignored(message or trace, exc_class=exc_class):
+        return None
+
+    # ── Everything below is untrusted text from another process ──────────
+    #
+    # `service` and `exc_class` are fitted BEFORE the fingerprint is taken,
+    # not after, and that order is the whole of requirement 2: the fingerprint
+    # must be computed over exactly the values that will be stored. Fit them
+    # afterwards and two occurrences of one bug would hash the same but be
+    # looked up by `_candidates` against a column holding something else.
+    # Truncation is deterministic, so two identical errors still truncate
+    # identically and still group — which is the property that had to hold.
+    service = bounds.fit(Issue, "service", service)
+    exc_class = bounds.fit(Issue, "exception_class", exc_class)
+    environment = bounds.fit(Issue, "environment", environment)
+    release = bounds.fit(ErrorEvent, "release", release)
+    # Vocabularies, not prose: a level that is not a level falls back to the
+    # column's own default rather than being cut into nonsense.
+    level = bounds.choice_or_default(Issue, "level", level)
+    kind = bounds.choice_or_default(Issue, "kind", kind)
+
     frames = norm.normalise_trace(trace) if trace else [norm.normalise_line(message)]
     fingerprint = norm.fingerprint(
         trace or message, service=service, exc_class=exc_class, message=message
@@ -176,8 +209,9 @@ def record(
             environment=environment,
             level=level,
             kind=kind,
-            title=norm.title_for(trace, message=message),
-            culprit=frames[0] if frames else "",
+            title=bounds.fit(Issue, "title", norm.title_for(trace, message=message)),
+            culprit=bounds.fit(Issue, "culprit", frames[0] if frames else ""),
+            # Already fitted above, with the fingerprint taken over it.
             exception_class=exc_class,
             normalised_trace="\n".join(frames),
             first_seen=occurred_at,
@@ -223,8 +257,8 @@ def record(
         message=(message or "")[:MAX_TRACE],
         trace=trace,
         context=redact(context),
-        request_path=(request_path or "")[:512],
-        trace_id=(trace_id or "")[:64],
+        request_path=bounds.fit(ErrorEvent, "request_path", request_path),
+        trace_id=bounds.fit(ErrorEvent, "trace_id", trace_id),
         user_id=user_id or None,
         occurrences=max(1, int(occurrences)),
     )

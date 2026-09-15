@@ -1,6 +1,6 @@
 # Errors — English
 
-`48` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
+`49` error keys. Canonical texts live in the code (`register_service_errors`); localized texts in `translations/errors.en.json`.
 
 | Code | Status | Params | Remediation | Text |
 |---|---|---|---|---|
@@ -45,6 +45,7 @@
 | `error.410.gone` | 410 | — | `retry` | Resource has been permanently removed |
 | `error.413.payload_too_large` | 413 | — | `retry` | Request body is too large |
 | `error.415.unsupported_media_type` | 415 | — | `retry` | Unsupported media type |
+| `error.422.alerts_report_not_storable` | 422 | `events` | `wait_and_retry` | {events} event(s) in this report could not be stored and were dropped |
 | `error.422.unprocessable_entity` | 422 | — | `wait_and_retry` | Unprocessable entity |
 | `error.423.locked` | 423 | — | `wait_and_retry` | Resource is locked |
 | `error.423.verification_locked` | 423 | — | `wait_and_retry` | Too many failed attempts — verification locked |

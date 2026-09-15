@@ -120,20 +120,38 @@ class ReportEventSerializer(serializers.Serializer):
     (``{"check": "...", "target": "...", "last_scrape": "..."}``).
     """
 
+    #: No `max_length` on ANY of these, and that is the deliberate half of
+    #: the 0.2.2 bounding work rather than an omission.
+    #:
+    #: The first cut declared the model's limits here too, and a live fleet
+    #: showed within minutes why that is wrong: a reporter whose
+    #: `request_path` was 4000 characters — a URL, i.e. something a CLIENT
+    #: chose, not something the reporter did — had its ENTIRE BATCH refused
+    #: with a 400 listing `request_path` and `release`. Every genuine alert
+    #: travelling with it was lost, to protect a column that
+    #: `stapel_alerts.bounds` was about to fit anyway.
+    #:
+    #: A reporter is not a user agent filling in a form. It is a process on a
+    #: failure path handing over the only record of a defect, and the store's
+    #: job is to KEEP that record, not to grade the submission. Length is the
+    #: store's problem and the store solves it by truncating, once, at the
+    #: boundary where the payload becomes model kwargs. Validation here is
+    #: for what cannot be repaired — a batch that is not a list, an
+    #: `occurrences` below 1, a `user_id` that is not a uuid.
     message = serializers.CharField(allow_blank=True, required=False, default="")
     trace = serializers.CharField(allow_blank=True, required=False, default="")
-    service = serializers.CharField(max_length=64, required=False, allow_blank=True)
-    level = serializers.CharField(max_length=16, required=False, default="error")
-    kind = serializers.CharField(max_length=16, required=False, default="manual")
-    environment = serializers.CharField(max_length=32, required=False, default="production")
-    release = serializers.CharField(max_length=64, required=False, allow_blank=True, default="")
+    service = serializers.CharField(required=False, allow_blank=True)
+    level = serializers.CharField(required=False, default="error")
+    kind = serializers.CharField(required=False, default="manual")
+    environment = serializers.CharField(required=False, default="production")
+    release = serializers.CharField(required=False, allow_blank=True, default="")
     context = serializers.JSONField(required=False, default=dict)
-    request_path = serializers.CharField(max_length=512, required=False, allow_blank=True, default="")
-    trace_id = serializers.CharField(max_length=64, required=False, allow_blank=True, default="")
+    request_path = serializers.CharField(required=False, allow_blank=True, default="")
+    trace_id = serializers.CharField(required=False, allow_blank=True, default="")
     user_id = serializers.UUIDField(required=False, allow_null=True, default=None)
     occurrences = serializers.IntegerField(required=False, min_value=1, default=1)
     occurred_at = serializers.DateTimeField(required=False, allow_null=True, default=None)
-    exc_class = serializers.CharField(max_length=128, required=False, allow_blank=True, default="")
+    exc_class = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class ReportSerializer(serializers.Serializer):

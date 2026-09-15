@@ -775,39 +775,32 @@
             "default": ""
           },
           "service": {
-            "type": "string",
-            "maxLength": 64
+            "type": "string"
           },
           "level": {
             "type": "string",
-            "default": "error",
-            "maxLength": 16
+            "default": "error"
           },
           "kind": {
             "type": "string",
-            "default": "manual",
-            "maxLength": 16
+            "default": "manual"
           },
           "environment": {
             "type": "string",
-            "default": "production",
-            "maxLength": 32
+            "default": "production"
           },
           "release": {
             "type": "string",
-            "default": "",
-            "maxLength": 64
+            "default": ""
           },
           "context": {},
           "request_path": {
             "type": "string",
-            "default": "",
-            "maxLength": 512
+            "default": ""
           },
           "trace_id": {
             "type": "string",
-            "default": "",
-            "maxLength": 64
+            "default": ""
           },
           "user_id": {
             "type": "string",
@@ -826,8 +819,7 @@
           },
           "exc_class": {
             "type": "string",
-            "default": "",
-            "maxLength": 128
+            "default": ""
           }
         }
       },

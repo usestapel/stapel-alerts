@@ -4,6 +4,53 @@ All notable changes to stapel-alerts are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0 semver: **minor = breaking**, patch = compatible.
 
+## [0.2.3] — 2026-09-16
+
+Adopting 0.2.2 on the same fleet found two more, and both are the shape this
+library keeps producing: a mechanism that was right for a monolith and wrong
+the moment the app also runs in a process that does not own the store.
+
+### A reporter certified GDPR erasure over tables it does not have
+
+`AppConfig.ready` registered `AlertsGDPRProvider` unconditionally, so every
+REPORTER registered it too. stapel-gdpr infers an owner's kind rather than
+taking a declaration — local iff a provider with that section is registered in
+this process — so a reporter made itself the LOCAL owner of a store held
+somewhere else. An account closure would run `erase_subject` over the
+reporter's own empty alerts tables, return a receipt, and leave the real rows,
+the ones carrying `user_id`, untouched in the owner's database.
+
+The deployment that hit this had no honest answer available: name it and
+certify nothing, opt out and claim the store holds no personal data, or list it
+as a remote owner nobody answers and have erasure time out in silence. The
+defect was here, so the fix is here — the provider registers only in owner
+mode. A process that cannot erase does not claim it can.
+
+### The wire serializer refused what the store was about to fit
+
+0.2.2 bounded the columns and left `max_length` on the report serializer, so a
+batch carrying a 4000-character `request_path` — a URL a CLIENT chose — was
+refused whole with a 400 naming `request_path` and `release`. Every genuine
+alert travelling in that batch was lost to protect a column `bounds` was about
+to truncate anyway. Measured against the live store, which answered
+`error.400.alerts_invalid_report` to the exact payload 0.2.2 was released to
+accept.
+
+A reporter is not a user agent filling in a form; it is a process on a failure
+path handing over the only record of a defect, and the store's job is to keep
+that record rather than grade the submission. Length is now repaired, never
+refused. What cannot be repaired — a `user_id` that is not a uuid, an
+`occurrences` below 1 — is still refused, because coercing those would be
+inventing data.
+
+### `title_for` truncated a second time, silently
+
+It ended in `title[:255]`, in front of the marked cut `bounds.fit` makes — so a
+long title was stored shortened with no ellipsis and a reader could not tell
+whether they were seeing the whole message. Two places that both know the
+column's width is one too many. The normaliser produces the text; `bounds` is
+the single boundary that makes it fit and says so.
+
 ## [0.2.2] — 2026-09-15
 
 Four defects, all found within the first hour of the first real mount — an

@@ -120,10 +120,7 @@ STR_PLACEHOLDER = "<str>"
 # not the tokens: a message that prints a payload prints a different payload
 # every time, and the template around it is the bug.
 #
-# So a quoted literal is an island too. Two rules, and the split between them
-# is what keeps this from over-merging:
-#
-# The rule is deliberately scoped to MAPPING PAYLOADS and nothing else, and
+# So a quoted literal is an island too. The rule is deliberately scoped to MAPPING PAYLOADS and nothing else, and
 # the scope is the whole of its safety. Only the VALUE side of `'key': 'value'`
 # is replaced: the keys are the payload's SHAPE, so `{'app_label': …}` and
 # `{'user_id': …}` stay different issues.
@@ -152,6 +149,8 @@ _MAPPING_PAIR = re.compile(
     r"(?P<key>(?P<kq>['\"])[A-Za-z_][\w.\-]*(?P=kq))\s*:\s*"
     r"(?P<vq>['\"])[^'\"]*(?P=vq)"
 )
+
+
 def _normalise_payloads(line: str) -> str:
     """Inside a mapping literal, replace each value; leave the rest of the line.
 
@@ -382,8 +381,12 @@ def fingerprint(
 def title_for(trace: str, *, message: str = "") -> str:
     """A one-line human title: ``ExceptionClass: first line of the message``.
 
-    Truncated to 255 characters (the column) at a word boundary where one is
-    near the cut.
+    NOT truncated here, and that is the point. Until 0.2.3 this returned
+    ``title[:255]`` — a second, SILENT cut in front of the one
+    :mod:`stapel_alerts.bounds` makes, so a long title was stored shortened
+    with no marker and the reader could not tell. Two places that both know
+    the column's width is one place too many; this one produces the text and
+    ``bounds.fit`` is the single boundary that makes it fit and says so.
     """
     klass = exception_class(trace)
     text = (message or "").strip().splitlines()
@@ -394,8 +397,7 @@ def title_for(trace: str, *, message: str = "") -> str:
             if line and not line.startswith(("File \"", "Traceback", "During handling")):
                 head = line
                 break
-    title = f"{klass}: {head}" if klass and not head.startswith(klass) else (head or klass)
-    return title[:255]
+    return f"{klass}: {head}" if klass and not head.startswith(klass) else (head or klass)
 
 
 __all__ = [

@@ -4,6 +4,28 @@ All notable changes to stapel-alerts are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0 semver: **minor = breaking**, patch = compatible.
 
+## [0.3.0] — 2026-09-20
+
+Minor: `alerts_open_total` declares how several workers combine. Floor
+`stapel-core>=0.88.0`.
+
+### Fixed — N workers reported N times the open issues
+
+Under `PROMETHEUS_MULTIPROC_DIR` every gunicorn worker that refreshed the
+gauge wrote its own copy of a count over the SAME rows of the same table.
+Without a declared `multiprocess_mode`, `prometheus_client` emits one series
+per pid — a panel that was one line becomes one per worker, labelled by a
+number that means nothing and vanishes on the next recycle — and the obvious
+fix, `livesum`, would report the store's open issues multiplied by the number
+of workers that happened to refresh.
+
+`livemostrecent`: the freshest reading is the truth, because every worker is
+reading the same thing. The "a fixed service reports 0, not nothing" property
+is unchanged.
+
+Inert in a single-process deployment; a deployment that does not set
+`PROMETHEUS_MULTIPROC_DIR` sees no change.
+
 ## [0.2.4] — 2026-09-20
 
 ### `from stapel_alerts import capture` handed back a module, and the fleet's alerts stopped existing

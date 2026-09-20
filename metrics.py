@@ -74,6 +74,13 @@ def refresh_open_gauges() -> None:
                 open_counts.get((service, level), 0),
                 labels={"level": level, "service": service},
                 description=_OPEN_DESCRIPTION,
+                # Every worker counts the SAME rows of the SAME table, so the
+                # freshest reading is the answer. `livesum` would report the
+                # store's open issues multiplied by the number of gunicorn
+                # workers that happened to refresh, and the library default
+                # would emit one series per pid — a panel that changes shape
+                # the day a deployment adds a worker.
+                multiprocess_mode="livemostrecent",
             )
     except Exception:  # pragma: no cover - never on the failure path's way
         logger.debug("alerts: open gauge not refreshed", exc_info=True)

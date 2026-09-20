@@ -36,8 +36,9 @@ def recorded_metrics(monkeypatch):
     )
     monkeypatch.setattr(
         core_metrics, "gauge",
-        lambda name, value, labels=None, description=None: seen.append(
-            ("gauge", name, value, labels or {})
+        lambda name, value, labels=None, description=None,
+        multiprocess_mode=None: seen.append(
+            ("gauge", name, value, labels or {}, multiprocess_mode)
         ),
     )
     return seen
@@ -69,6 +70,23 @@ def test_a_fixed_service_reports_zero_and_not_nothing(recorded_metrics):
         for m in recorded_metrics if m[0] == "gauge" and m[1] == OPEN_METRIC
     }
     assert gauges[("svc-a", "error")] == 0
+
+
+def test_the_open_gauge_declares_how_workers_combine(recorded_metrics):
+    """Under gunicorn with N workers, each one counts the SAME open issues.
+
+    Without a declared mode prometheus_client emits one series per pid, and
+    the obvious alternative (`livesum`) would report the store's open issues
+    multiplied by the number of workers that refreshed. The freshest reading
+    is the only correct answer.
+    """
+    record(trace=FK_VIOLATION_A, service="svc-a", level="error")
+    recorded_metrics.clear()
+
+    refresh_open_gauges()
+
+    modes = {m[4] for m in recorded_metrics if m[1] == OPEN_METRIC}
+    assert modes == {"livemostrecent"}
 
 
 def test_the_open_gauge_counts_new_and_regressed(recorded_metrics):

@@ -96,7 +96,7 @@
   "surface_roots": [
     {
       "select": "functions",
-      "path": "capture.py"
+      "path": "_capture.py"
     },
     {
       "select": "functions",

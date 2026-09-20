@@ -4,6 +4,55 @@ All notable changes to stapel-alerts are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0 semver: **minor = breaking**, patch = compatible.
 
+## [0.2.4] — 2026-09-20
+
+### `from stapel_alerts import capture` handed back a module, and the fleet's alerts stopped existing
+
+The one function this library has was defined in a submodule with the same
+name as the export. `__init__.py` exports lazily (PEP 562), and PEP 562's
+`__getattr__` runs only when normal attribute lookup FAILS — so the moment
+anything in the process imported the submodule `stapel_alerts.capture`, Python
+bound the module object onto the package attribute and the export was gone for
+the life of that process. `from stapel_alerts import capture` then returned a
+module and `capture(...)` raised `TypeError: 'module' object is not callable`.
+
+Deterministically, under two import orders in a clean interpreter:
+
+```
+from stapel_alerts import capture            # -> <class 'function'>
+```
+```
+import stapel_alerts.capture
+from stapel_alerts import capture            # -> <class 'module'>   (0.2.3)
+```
+
+And the second order is the one a real deployment takes, not the rare one: the
+log handler this package installs in `AppConfig.ready` does
+`from .capture import capture` inside `emit()`, so every service that installed
+the app bound the submodule on its FIRST WARNING record — before any library
+reached for the export. A caller of an alert library is on a failure path and
+guards the call, so nothing crashed. The alerts simply were not filed, and no
+symptom said so. Found on a production host where a "LLM provider out of
+credits" alert had reached the tracker zero times while the provider had been
+refusing for two days.
+
+The suite could not see it: `conftest.py` imported the submodule first as well,
+so every test in this repo ran in the working order.
+
+**The module `stapel_alerts.capture` is now `stapel_alerts._capture`.** The
+public name is and always was the FUNCTION `stapel_alerts.capture`, which is
+now the callable under every import order. There is no compatibility shim,
+deliberately: a module that keeps the old name back is the defect. A sweep of
+the fleet found no importer of the old module path outside this repo, and an
+importer that does exist now gets a loud `ModuleNotFoundError` at import time
+instead of a silent `TypeError` on a failure path. If you imported
+`stapel_alerts.capture` as a module, import `stapel_alerts._capture` — or,
+better, the export: `from stapel_alerts import capture`.
+
+`tests/test_import_surface.py` is the gate that keeps it fixed: it asserts the
+export is callable under three import orders in clean subprocesses, and fails
+if ANY name in `__all__` is also the name of a submodule.
+
 ## [0.2.3] — 2026-09-16
 
 Adopting 0.2.2 on the same fleet found two more, and both are the shape this

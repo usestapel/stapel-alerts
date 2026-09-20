@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from stapel_alerts.capture import capture, reset_rate_limit
+from stapel_alerts._capture import capture, reset_rate_limit
 from stapel_alerts.inputs import (
     AlertsLogHandler,
     alerts_exception_handler,

@@ -1,4 +1,4 @@
-# stapel-alerts 0.2.3
+# stapel-alerts 0.2.4
 
 An alert store for a fleet that has no Sentry, and the same capture() call whether one is connected or not. One row per BUG (fingerprint, status, count, first/last seen, the release that claimed the fix, whether it came back) rather than a search over log text — because the question a fix wave is reconciled against is 'which bugs are open, which are fixed, and which regressed', and that needs a status column. Every input is wired by installing the app: a WARNING+ log handler, the DRF 5xx hook, Celery task failures, core's DLQ parks, and the comm handler exceptions that are RETURNED rather than raised and which no except clause anywhere would otherwise see. Monoliths write in process; microservices POST with a per-service key, buffered and retried, and fall through to Telegram when the owner is unreachable — never over the bus, because the bus is the thing whose failures this records. A Prometheus blind-spot watchdog files the monitoring stack's own gaps as issues, on the principle that 'no alerts firing' is the observable state of both a healthy fleet and a blind one.
 
@@ -48,7 +48,7 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   One watchdog pass as a plain callable, registered as a Celery task when celery is installed. This is the name the shipped beat entry references; call it directly from a host scheduler that is neither celery beat nor cron.
 - announce — stapel_alerts.monitoring.announce
   Push the run's verdict at the NOTIFY seam directly, on EVERY run that has something to say. Deliberately not subject to the new/regressed/spike thresholds the rest of the module uses: a blind spot on its ninth consecutive run is not less urgent than on its first, and 'the monitoring is still blind' is the message somebody needs at the moment they look at their phone.
-- capture — stapel_alerts.capture.capture
+- capture — stapel_alerts._capture.capture
   instead of: logging.exception, sentry_sdk.capture_exception, stapel_alerts.models.ErrorEvent.objects.create
   The one call every input and every library makes: capture(exc) or capture("text", level=..., context={...}). Where it goes is a deployment question this answers, not a caller question — the local store when this process owns it, HTTP-with-a-service-key when it does not — which is what makes the same line correct in a monolith and in a microservice. It cannot raise (every caller is on a failure path) and it is rate limited per fingerprint, with what the limiter dropped carried into the next accepted event's occurrences so the count stays true. Never construct an Issue or an ErrorEvent directly: services.record is the only writer and doing it by hand skips grouping, the regression flip, the event cap, the Sentry forward and the post-commit hooks.
 - close_recovered — stapel_alerts.monitoring.close_recovered
@@ -57,7 +57,7 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   The beat entry for the watchdog, as a dict fragment to splat into CELERY_BEAT_SCHEDULE in the settings module itself — written there rather than merged from an on_after_finalize signal, so `manage.py check` (which reads settings.CELERY_BEAT_SCHEDULE) sees what beat will actually run. Pass seconds= to override the five-minute cadence; the interval is the resolution of every blind spot this finds.
 - report — stapel_alerts.monitoring.report
   File each finding as a kind="monitoring" event through capture(), so a monitoring blind spot is grouped, counted and closed like any other bug in the tracker.
-- reset_rate_limit — stapel_alerts.capture.reset_rate_limit
+- reset_rate_limit — stapel_alerts._capture.reset_rate_limit
   Drop the per-fingerprint limiter's state. A TEST lever and the thing a reloaded worker wants: the limiter is process state, not database state, so a suite's rollback does not touch it and a carried-over window silently swallows the first capture of the next case.
 - run — stapel_alerts.monitoring.run
   One pass of the monitoring blind-spot watchdog: collect, file, close what recovered, announce. Returns a summary and never raises, because a crashing watchdog is a blind spot of its own. Call it from your own scheduler if you are not using the shipped beat entry or the management command; do not reimplement the pass out of collect/report/close_recovered, since the ORDER is load-bearing (filing before closing is what records a check that flapped inside one run instead of dropping it).

@@ -403,7 +403,7 @@ def collect() -> list[Finding]:
 
 def report(findings: list[Finding]) -> int:
     """File each finding as a ``kind="monitoring"`` event. Returns how many."""
-    from .capture import capture
+    from ._capture import capture
 
     filed = 0
     for finding in findings:

@@ -54,7 +54,7 @@ def _clean_state():
     """A rate limiter and a reporter buffer are PROCESS state, not database
     state, so `db` rollback does not touch them — and a limiter that carried
     over would silently swallow the first capture of the next test."""
-    from stapel_alerts.capture import reset_rate_limit
+    from stapel_alerts._capture import reset_rate_limit
     from stapel_alerts.transport import reset
 
     reset_rate_limit()

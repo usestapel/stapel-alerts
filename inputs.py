@@ -77,7 +77,7 @@ class AlertsLogHandler(logging.Handler):
         super().__init__(level if level is not None else logging.WARNING)
 
     def emit(self, record: logging.LogRecord) -> None:
-        from .capture import capture
+        from ._capture import capture
         from .conf import alerts_settings
 
         if _excluded(record.name, alerts_settings.LOG_EXCLUDE):
@@ -145,7 +145,7 @@ def capture_exception(exc, context: dict | None = None) -> bool:
     Only 5xx: a 400 is the API working. An alert store that files validation
     errors is a log, and nobody reads it.
     """
-    from .capture import capture
+    from ._capture import capture
     from .conf import alerts_settings
 
     if not alerts_settings.CAPTURE_5XX:
@@ -202,7 +202,7 @@ def on_task_failure(sender=None, task_id=None, exception=None, einfo=None, **kwa
     A failed task is work that did not happen and that nobody is waiting on —
     the same class as a DLQ park, and the class most likely to be silent.
     """
-    from .capture import capture
+    from ._capture import capture
     from .conf import alerts_settings
 
     if not alerts_settings.CAPTURE_CELERY:
@@ -238,7 +238,7 @@ def on_bus_event_parked(sender=None, topic="", event=None, reason="", exc_info=N
     this says what, with the traceback, which is the difference between an
     alert you can act on and a number that goes up.
     """
-    from .capture import capture
+    from ._capture import capture
     from .conf import alerts_settings
 
     if not alerts_settings.CAPTURE_DLQ:
@@ -290,7 +290,7 @@ def capture_handler_failure(event, handler, exc) -> None:
     handlers are delivered the same event, the failures are different bugs,
     and by the time the event is parked only one reason survives.
     """
-    from .capture import capture
+    from ._capture import capture
 
     capture(
         exc,

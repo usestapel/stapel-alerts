@@ -1,6 +1,6 @@
 {
   "module": "stapel-alerts",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "provides": "An alert store for a fleet that has no Sentry, and the same capture() call whether one is connected or not. One row per BUG (fingerprint, status, count, first/last seen, the release that claimed the fix, whether it came back) rather than a search over log text — because the question a fix wave is reconciled against is 'which bugs are open, which are fixed, and which regressed', and that needs a status column. Every input is wired by installing the app: a WARNING+ log handler, the DRF 5xx hook, Celery task failures, core's DLQ parks, and the comm handler exceptions that are RETURNED rather than raised and which no except clause anywhere would otherwise see. Monoliths write in process; microservices POST with a per-service key, buffered and retried, and fall through to Telegram when the owner is unreachable — never over the bus, because the bus is the thing whose failures this records. A Prometheus blind-spot watchdog files the monitoring stack's own gaps as issues, on the principle that 'no alerts firing' is the observable state of both a healthy fleet and a blind one.",
   "axes": [
     {
@@ -142,21 +142,9 @@
   ],
   "surface": [
     {
-      "name": "alerts_watch_monitoring",
-      "kind": "factory",
-      "path": "stapel_alerts.beat.alerts_watch_monitoring",
-      "intent": "One watchdog pass as a plain callable, registered as a Celery task when celery is installed. This is the name the shipped beat entry references; call it directly from a host scheduler that is neither celery beat nor cron."
-    },
-    {
-      "name": "get_alerts_beat_schedule",
-      "kind": "factory",
-      "path": "stapel_alerts.beat.get_alerts_beat_schedule",
-      "intent": "The beat entry for the watchdog, as a dict fragment to splat into CELERY_BEAT_SCHEDULE in the settings module itself — written there rather than merged from an on_after_finalize signal, so `manage.py check` (which reads settings.CELERY_BEAT_SCHEDULE) sees what beat will actually run. Pass seconds= to override the five-minute cadence; the interval is the resolution of every blind spot this finds."
-    },
-    {
       "name": "capture",
       "kind": "factory",
-      "path": "stapel_alerts.capture.capture",
+      "path": "stapel_alerts._capture.capture",
       "intent": "The one call every input and every library makes: capture(exc) or capture(\"text\", level=..., context={...}). Where it goes is a deployment question this answers, not a caller question — the local store when this process owns it, HTTP-with-a-service-key when it does not — which is what makes the same line correct in a monolith and in a microservice. It cannot raise (every caller is on a failure path) and it is rate limited per fingerprint, with what the limiter dropped carried into the next accepted event's occurrences so the count stays true. Never construct an Issue or an ErrorEvent directly: services.record is the only writer and doing it by hand skips grouping, the regression flip, the event cap, the Sentry forward and the post-commit hooks.",
       "instead_of": [
         "logging.exception",
@@ -167,8 +155,20 @@
     {
       "name": "reset_rate_limit",
       "kind": "factory",
-      "path": "stapel_alerts.capture.reset_rate_limit",
+      "path": "stapel_alerts._capture.reset_rate_limit",
       "intent": "Drop the per-fingerprint limiter's state. A TEST lever and the thing a reloaded worker wants: the limiter is process state, not database state, so a suite's rollback does not touch it and a carried-over window silently swallows the first capture of the next case."
+    },
+    {
+      "name": "alerts_watch_monitoring",
+      "kind": "factory",
+      "path": "stapel_alerts.beat.alerts_watch_monitoring",
+      "intent": "One watchdog pass as a plain callable, registered as a Celery task when celery is installed. This is the name the shipped beat entry references; call it directly from a host scheduler that is neither celery beat nor cron."
+    },
+    {
+      "name": "get_alerts_beat_schedule",
+      "kind": "factory",
+      "path": "stapel_alerts.beat.get_alerts_beat_schedule",
+      "intent": "The beat entry for the watchdog, as a dict fragment to splat into CELERY_BEAT_SCHEDULE in the settings module itself — written there rather than merged from an on_after_finalize signal, so `manage.py check` (which reads settings.CELERY_BEAT_SCHEDULE) sees what beat will actually run. Pass seconds= to override the five-minute cadence; the interval is the resolution of every blind spot this finds."
     },
     {
       "name": "announce",

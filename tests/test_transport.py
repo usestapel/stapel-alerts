@@ -8,7 +8,7 @@ import time
 import pytest
 
 from stapel_alerts import transport
-from stapel_alerts.capture import capture, reset_rate_limit
+from stapel_alerts._capture import capture, reset_rate_limit
 from stapel_alerts.models import ErrorEvent
 
 pytestmark = pytest.mark.django_db

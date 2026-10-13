@@ -218,13 +218,28 @@ def on_task_failure(sender=None, task_id=None, exception=None, einfo=None, **kwa
     )
 
 
+def reinstall_log_handler(*args, **kwargs) -> None:
+    """Receiver for Celery's ``after_setup_logger``.
+
+    A Celery worker reconfigures the root logger after Django is ready
+    (``worker_hijack_root_logger``, on by default) and drops the handler
+    :func:`install_log_handler` attached in ``ready()``: every ERROR a beat
+    task or a worker logged reached stdout and never the store. Measured on a
+    client fleet, where an invariants sweep paged "into nothing" for days.
+    """
+    install_log_handler()
+
+
 def connect_celery() -> bool:
-    """Connect the Celery signal if celery is importable. Returns whether it was."""
+    """Connect the Celery signals if celery is importable. Returns whether it was."""
     try:
-        from celery.signals import task_failure
+        from celery.signals import after_setup_logger, task_failure
     except Exception:
         return False
     task_failure.connect(on_task_failure, weak=False, dispatch_uid="stapel_alerts")
+    after_setup_logger.connect(
+        reinstall_log_handler, weak=False, dispatch_uid="stapel_alerts_logging"
+    )
     return True
 
 
@@ -341,6 +356,7 @@ __all__ = [
     "capture_exception",
     "capture_handler_failure",
     "connect_celery",
+    "reinstall_log_handler",
     "connect_dlq",
     "install_log_handler",
     "level_for",

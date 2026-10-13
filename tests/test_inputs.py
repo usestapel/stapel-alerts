@@ -375,3 +375,24 @@ def test_wrapping_delivery_twice_does_not_double_report():
     already = comm_actions.deliver_to_subscribers
     assert wrap_deliver_to_subscribers() is False
     assert comm_actions.deliver_to_subscribers is already
+
+
+def test_a_celery_worker_that_rebuilds_the_root_logger_keeps_the_handler():
+    """Celery's worker hijacks the root logger after ``ready()``; the handler
+    must come back, or every page a worker logs reaches stdout only."""
+    pytest.importorskip("celery")
+    from celery.signals import after_setup_logger
+
+    from stapel_alerts.inputs import AlertsLogHandler, connect_celery
+
+    root = logging.getLogger()
+    connect_celery()
+    for handler in list(root.handlers):
+        if isinstance(handler, AlertsLogHandler):
+            root.removeHandler(handler)  # what the worker's setup does
+
+    after_setup_logger.send(sender=None, logger=root, loglevel=logging.INFO)
+
+    assert any(isinstance(h, AlertsLogHandler) for h in root.handlers)
+    logging.getLogger("acme.sweep").error("invariant violated: 3 rows")
+    assert ErrorEvent.objects.filter(message__contains="invariant violated").exists()

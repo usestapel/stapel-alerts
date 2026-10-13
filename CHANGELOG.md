@@ -4,6 +4,17 @@ All notable changes to stapel-alerts are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0 semver: **minor = breaking**, patch = compatible.
 
+## [0.3.1] — 2026-10-14
+
+### Fixed — a Celery worker's ERROR lines reach the store
+
+A Celery worker rebuilds the root logger after Django is ready
+(`worker_hijack_root_logger`, on by default) and dropped the handler
+`ready()` installed, so every ERROR a beat task or worker logged reached
+stdout and never the store — an invariants sweep paged into nothing for
+days on a client fleet. `connect_celery()` now also connects
+`after_setup_logger` to `reinstall_log_handler()`.
+
 ## [0.3.0] — 2026-09-20
 
 Minor: `alerts_open_total` declares how several workers combine. Floor

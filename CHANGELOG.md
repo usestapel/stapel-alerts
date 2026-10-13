@@ -4,6 +4,11 @@ All notable changes to stapel-alerts are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0 semver: **minor = breaking**, patch = compatible.
 
+## [0.3.2] — 2026-10-14
+
+0.3.1 was tagged with README.md still at 0.3.0 and never published; the
+code is 0.3.1's.
+
 ## [0.3.1] — 2026-10-14
 
 ### Fixed — a Celery worker's ERROR lines reach the store

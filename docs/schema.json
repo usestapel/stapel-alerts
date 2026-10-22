@@ -432,7 +432,7 @@
           "status": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/Status295Enum"
+                "$ref": "#/components/schemas/IssueStatusEnum"
               }
             ],
             "readOnly": true
@@ -566,7 +566,7 @@
           "status": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/Status295Enum"
+                "$ref": "#/components/schemas/IssueStatusEnum"
               }
             ],
             "readOnly": true
@@ -709,6 +709,16 @@
         "type": "string",
         "description": "* `new` - new\n* `fixed` - fixed\n* `muted` - muted"
       },
+      "IssueStatusEnum": {
+        "enum": [
+          "new",
+          "fixed",
+          "regressed",
+          "muted"
+        ],
+        "type": "string",
+        "description": "* `new` - New\n* `fixed` - Fixed\n* `regressed` - Regressed\n* `muted` - Muted"
+      },
       "KindEnum": {
         "enum": [
           "exception",
@@ -822,16 +832,6 @@
             "default": ""
           }
         }
-      },
-      "Status295Enum": {
-        "enum": [
-          "new",
-          "fixed",
-          "regressed",
-          "muted"
-        ],
-        "type": "string",
-        "description": "* `new` - New\n* `fixed` - Fixed\n* `regressed` - Regressed\n* `muted` - Muted"
       }
     },
     "securitySchemes": {

@@ -88,3 +88,21 @@ def settings_kwargs(
 #: aggregate. Forced on the singleton by the harness so a single-module
 #: instance derives the same style of operationIds.
 CODEGEN_SCHEMA_PATH_PREFIX = "/"
+
+
+def enum_name_overrides() -> dict:
+    """drf-spectacular ``ENUM_NAME_OVERRIDES`` for this module's contract.
+
+    The issue status set is carried by two fields (the full model choices on
+    reads, the settable subset on PATCH), so drf-spectacular falls back to a
+    collision name (``Status295Enum``) that changes with unrelated edits and
+    generator versions, renaming the react pair's generated type. Both sets
+    are named here. Called after ``django.setup()``.
+    """
+    from stapel_alerts.models import IssueStatus
+    from stapel_alerts.serializers import SETTABLE_STATUSES
+
+    return {
+        "IssueStatusEnum": IssueStatus,
+        "IssuePatchStatusEnum": [s.value for s in SETTABLE_STATUSES],
+    }

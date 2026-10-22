@@ -4,6 +4,21 @@ All notable changes to stapel-alerts are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0 semver: **minor = breaking**, patch = compatible.
 
+## [0.4.0] — 2026-10-22
+
+Minor: an enum component is renamed in `docs/schema.json`.
+
+### Changed — the issue status enum has a stable name
+
+The issue status set is carried by two fields (the model choices on reads,
+the settable subset on PATCH), so drf-spectacular named the full set with a
+collision name, `Status295Enum`, which moves with unrelated edits and
+generator versions. The contract harness now pins `IssueStatusEnum` (the
+model's `IssueStatus`) and `IssuePatchStatusEnum` through
+`ENUM_NAME_OVERRIDES` (`_codegen_settings.enum_name_overrides`). The wire
+values are unchanged; a generated client reads `IssueStatusEnum` instead of
+`Status295Enum`.
+
 ## [0.3.2] — 2026-10-14
 
 0.3.1 was tagged with README.md still at 0.3.0 and never published; the

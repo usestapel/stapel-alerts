@@ -46,6 +46,14 @@ def _configure() -> None:
 
     spectacular_settings.SCHEMA_PATH_PREFIX = CODEGEN_SCHEMA_PATH_PREFIX
 
+    # Stable enum component names (stapel-schema-lint SCH004).
+    from drf_spectacular.plumbing import _load_enum_name_overrides
+
+    from stapel_alerts._codegen_settings import enum_name_overrides
+
+    spectacular_settings.ENUM_NAME_OVERRIDES = enum_name_overrides()
+    _load_enum_name_overrides.cache_clear()
+
     # Register drf-spectacular's JWT cookie-auth extension explicitly (a real
     # host triggers this as a side effect of wiring its Swagger URLs). Without
     # it, reviews' protected endpoints (every view requires IsAuthenticated)

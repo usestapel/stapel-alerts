@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 #: The triad, plus the two artifacts 0.2 added. README.md is checked
 #: separately because its emitter owns the comparison (it renders from all of
 #: these plus pyproject, and reports its own drift).
-ARTIFACTS = ("schema.json", "flows.json", "errors.json", "capabilities.json")
+ARTIFACTS = ("schema.v2.json", "schema.json", "flows.json", "errors.json", "capabilities.json")
 TEXT_ARTIFACTS = ("llms.txt",)
 
 

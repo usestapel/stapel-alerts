@@ -33,14 +33,18 @@ jobs:
 
       - name: migration-lint (expand/contract gate, release-management.md §3)
         run: |
-          pip install stapel-tools --quiet
+          pip install "stapel-tools>=0.84.0,<1" --quiet
           stapel-migration-lint . --strict
 
       - name: Import check (no Django needed)
         run: python -c "import stapel_alerts; print('import OK')"
 
       - name: Install test dependencies
-        run: pip install pytest pytest-django pytest-cov drf-spectacular stapel-tools
+        run: pip install pytest pytest-django pytest-cov drf-spectacular "stapel-tools>=0.84.0,<1"
+
+      - name: Contract drift (make contract-check, emitted on 3.12)
+        if: matrix.python-version == '3.12'
+        run: make contract-check PYTHON=python
 
       - name: Tests with coverage
         run: |
@@ -84,7 +88,7 @@ jobs:
       - name: Install
         run: pip install -e ".[all]" || pip install -e .
       - name: Install test dependencies
-        run: pip install pytest pytest-django drf-spectacular stapel-tools
+        run: pip install pytest pytest-django drf-spectacular "stapel-tools>=0.84.0,<1"
       - name: Tests
         run: pytest tests/ -q
 

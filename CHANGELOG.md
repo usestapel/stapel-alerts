@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.1] — 2026-11-20
+
+Patch. No migration. Requires stapel-core 0.99.3.
+
+- **Contract profile 2:** `docs/schema.v2.json` beside the unchanged-profile
+  `docs/schema.json`, for a native client generator; `make contract-check`
+  runs in CI.
+- `errors.json` regenerated under stapel-core 0.99.3 (`error.429.rate_limit`
+  text and params, `param_types`, core's `error.400.too_many_ids`).
+- Gates: `tests/test_contract_profile2.py` on stapel-tools 0.84.0's
+  `contract_gates` (profile 2 of the same surface, bound codes from
+  `errors.json`, every example valid, no dead `@action` declaration).
+- Fixed: `POST /report` declared `202` with no body while it answers
+  `{accepted, ignored, unstorable}`; it now declares `ReportResult`, and the
+  wire gate drives it.
+
 All notable changes to stapel-alerts are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0 semver: **minor = breaking**, patch = compatible.

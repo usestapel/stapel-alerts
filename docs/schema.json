@@ -267,7 +267,14 @@
         ],
         "responses": {
           "202": {
-            "description": "No response body"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResult"
+                }
+              }
+            },
+            "description": ""
           }
         }
       }
@@ -832,6 +839,29 @@
             "default": ""
           }
         }
+      },
+      "ReportResult": {
+        "type": "object",
+        "description": "What ``POST /report`` answers with: how the batch was disposed of.",
+        "properties": {
+          "accepted": {
+            "type": "integer",
+            "description": "Events stored (new or grouped into an issue)."
+          },
+          "ignored": {
+            "type": "integer",
+            "description": "Events dropped by the ingest rules."
+          },
+          "unstorable": {
+            "type": "integer",
+            "description": "Events that could not be stored; logged locally, never a 500."
+          }
+        },
+        "required": [
+          "accepted",
+          "ignored",
+          "unstorable"
+        ]
       }
     },
     "securitySchemes": {

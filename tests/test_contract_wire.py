@@ -40,6 +40,9 @@ SCHEMA = json.loads((ROOT / "docs" / "schema.json").read_text())
 WRITE_RECIPES = {
     ("PATCH", "/alerts/api/v1/issues/{issue_id}"): {"note": "reconciled"},
     ("POST", "/alerts/api/v1/issues/{issue_id}/fix"): {"version": "0.2.1"},
+    ("POST", "/alerts/api/v1/report"): {
+        "events": [{"message": "probe", "service": "svc-probe", "kind": "manual"}]
+    },
 }
 
 

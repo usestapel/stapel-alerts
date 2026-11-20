@@ -158,6 +158,16 @@ class ReportSerializer(serializers.Serializer):
     events = ReportEventSerializer(many=True, max_length=MAX_BATCH)
 
 
+class ReportResultSerializer(serializers.Serializer):
+    """What ``POST /report`` answers with: how the batch was disposed of."""
+
+    accepted = serializers.IntegerField(help_text="Events stored (new or grouped into an issue).")
+    ignored = serializers.IntegerField(help_text="Events dropped by the ingest rules.")
+    unstorable = serializers.IntegerField(
+        help_text="Events that could not be stored; logged locally, never a 500."
+    )
+
+
 __all__ = [
     "SETTABLE_STATUSES",
     "MAX_BATCH",
@@ -169,4 +179,5 @@ __all__ = [
     "IssueFixSerializer",
     "ReportEventSerializer",
     "ReportSerializer",
+    "ReportResultSerializer",
 ]

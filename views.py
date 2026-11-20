@@ -52,6 +52,7 @@ from .serializers import (
     IssuePageSerializer,
     IssuePatchSerializer,
     IssueSerializer,
+    ReportResultSerializer,
     ReportSerializer,
 )
 from .services import mark_fixed, record, set_status
@@ -300,7 +301,7 @@ class ReportView(_AlertsView):
     authentication_classes: list = []
     request_serializer_class = ReportSerializer
 
-    @extend_schema(request=ReportSerializer, responses={202: None})
+    @extend_schema(request=ReportSerializer, responses={202: ReportResultSerializer})
     def post(self, request):
         service = self._authenticate(request)
         if isinstance(service, Response):
